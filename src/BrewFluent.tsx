@@ -214,6 +214,54 @@ const addDays = (dateStr, n) => {
   return d.toISOString().slice(0, 10);
 };
 
+/* Normalized matching between Claude-reported hits and target strings */
+const norm = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
+const hitMatch = (hits, target) =>
+  hits.some((h) => {
+    const a = norm(h);
+    const b = norm(target);
+    return a === b || a.includes(b) || b.includes(a);
+  });
+
+/* Daily rotation for the new-tab "Softener of the Day" widget */
+const DAILY_SOFTENERS = [
+  {
+    pattern: "Could you … when you get a chance?",
+    blunt: "Review my slides before 4.",
+    soft: "Could you take a look at my slides when you get a chance before 4?",
+  },
+  {
+    pattern: "Mind if I …?",
+    blunt: "Give me your charger.",
+    soft: "Mind if I borrow your charger for a bit?",
+  },
+  {
+    pattern: "I see it a bit differently …",
+    blunt: "That timeline is wrong.",
+    soft: "I see it a bit differently — two weeks feels tight once QA is in.",
+  },
+  {
+    pattern: "My worry with that is …",
+    blunt: "That idea won't work.",
+    soft: "My worry with that is the rollout timing — could we phase it?",
+  },
+  {
+    pattern: "Would it work for you if …?",
+    blunt: "Move our 1:1 to Thursday.",
+    soft: "Would it work for you if we moved our 1:1 to Thursday?",
+  },
+  {
+    pattern: "I remember it slightly differently …",
+    blunt: "No, that's not what happened.",
+    soft: "Hmm, I remember it slightly differently — wasn't the demo on Tuesday?",
+  },
+  {
+    pattern: "Would you be up for … instead?",
+    blunt: "No. I hate that place.",
+    soft: "I'm not huge on that place — would you be up for ramen instead?",
+  },
+];
+
 const hasStorage = typeof window !== "undefined" && window.storage;
 
 async function loadStore(key, fallback) {
@@ -334,7 +382,7 @@ ${history}
 
 Rules:
 - Reply in character, 1-3 sentences, natural spoken English.
-- In "hits", list any practice targets the learner clearly used (paraphrases count) in their LAST message only.
+- In "hits", copy verbatim the target strings (exactly as written in PRACTICE TARGETS above) that the learner used or closely paraphrased in their LAST message only. Never invent strings that are not in the list.
 - If the learner's last message was blunt or over-hedged, set "coach" to one short whispered tip; otherwise null.
 - Set "done" true once the conversation reaches a natural resolution (agreement/compromise), and make your reply a closing line.
 
@@ -480,6 +528,10 @@ export default function BrewFluent() {
   const [reviewIdx, setReviewIdx] = useState(0);
   const [reviewDoneCount, setReviewDoneCount] = useState(0);
 
+  // new-tab widget preview
+  const [clock, setClock] = useState(new Date());
+  const [widgetMode, setWidgetMode] = useState("card"); // card | drill
+
   // roleplay state
   const [chat, setChat] = useState([]);
   const [chatInput, setChatInput] = useState("");
@@ -535,6 +587,11 @@ export default function BrewFluent() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, chatBusy]);
+
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   /* ---------- mistake bank ---------- */
   const dueItems = Object.values(bank).filter((e) => e.due <= todayStr());
@@ -820,6 +877,19 @@ export default function BrewFluent() {
           </button>
         ))}
 
+        <Btn
+          kind="ghost"
+          onClick={() => {
+            setWidgetMode("card");
+            setFeedback(null);
+            setRewriteText("");
+            setScreen("widget");
+          }}
+          style={{ marginTop: 4 }}
+        >
+          Preview: new-tab widget
+        </Btn>
+
         <button
           onClick={resetProgress}
           style={{
@@ -838,6 +908,139 @@ export default function BrewFluent() {
         </button>
       </>
     );
+
+  /* ---------- NEW-TAB WIDGET PREVIEW ---------- */
+  if (screen === "widget") {
+    const s = DAILY_SOFTENERS[Math.floor(Date.now() / 86400000) % DAILY_SOFTENERS.length];
+    const hh = clock.getHours().toString().padStart(2, "0");
+    const mm = clock.getMinutes().toString().padStart(2, "0");
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: T.leafDeep,
+          color: T.surface,
+          fontFamily: "'Karla', sans-serif",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Karla:wght@400;700&display=swap');
+          * { box-sizing: border-box; }
+          textarea:focus, button:focus-visible { outline: 2.5px solid ${T.mist}; outline-offset: 2px; }
+        `}</style>
+        <div style={{ width: "100%", maxWidth: 460, padding: "36px 22px", textAlign: "center" }}>
+          <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", opacity: 0.65 }}>
+            New tab · prototype preview
+          </div>
+          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 58, fontWeight: 500, margin: "8px 0 0", lineHeight: 1 }}>
+            {hh}:{mm}
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.7, margin: "8px 0 28px" }}>
+            {streak} day steep{streak === 1 ? "" : "s"} ◉
+          </div>
+
+          <div
+            style={{
+              background: "rgba(251,251,247,0.07)",
+              border: "1px solid rgba(251,251,247,0.18)",
+              borderRadius: 18,
+              padding: "22px 20px",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: T.mist, fontWeight: 700 }}>
+              Softener of the day
+            </div>
+            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 23, fontWeight: 650, lineHeight: 1.3, margin: "10px 0 14px" }}>
+              {s.pattern}
+            </div>
+
+            {widgetMode === "card" && (
+              <>
+                <div style={{ fontSize: 14, opacity: 0.6, textDecoration: "line-through" }}>“{s.blunt}”</div>
+                <div style={{ fontSize: 15.5, marginTop: 6, color: T.mist }}>“{s.soft}”</div>
+                <Btn
+                  onClick={() => {
+                    setRewriteText("");
+                    setFeedback(null);
+                    setWidgetMode("drill");
+                  }}
+                  style={{ marginTop: 20, background: T.surface, color: T.leafDeep }}
+                >
+                  10-second drill
+                </Btn>
+              </>
+            )}
+
+            {widgetMode === "drill" && !feedback && (
+              <>
+                <div style={{ fontSize: 14.5, marginBottom: 10 }}>
+                  Soften this: <em>“{s.blunt}”</em>
+                </div>
+                <textarea
+                  value={rewriteText}
+                  onChange={(e) => setRewriteText(e.target.value)}
+                  placeholder="Your softer version…"
+                  rows={2}
+                  style={{
+                    width: "100%",
+                    fontFamily: "'Karla', sans-serif",
+                    fontSize: 15,
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(251,251,247,0.3)",
+                    background: "rgba(251,251,247,0.1)",
+                    color: T.surface,
+                    resize: "vertical",
+                    marginBottom: 10,
+                  }}
+                />
+                <Btn
+                  disabled={!rewriteText.trim() || scoring}
+                  onClick={async () => {
+                    setScoring(true);
+                    const r = await scoreRewrite({ blunt: s.blunt, target: s.pattern }, rewriteText.trim());
+                    setFeedback(r);
+                    setScoring(false);
+                  }}
+                  style={{ background: T.surface, color: T.leafDeep }}
+                >
+                  {scoring ? "Steeping…" : "Check my brew"}
+                </Btn>
+              </>
+            )}
+
+            {widgetMode === "drill" && feedback && (
+              <div style={{ background: T.surface, color: T.ink, borderRadius: 14, padding: "14px 16px" }}>
+                <SteepGauge gauge={feedback.gauge} verdict={feedback.verdict} />
+                <p style={{ fontSize: 14, lineHeight: 1.5, margin: "12px 0 0" }}>{feedback.feedback}</p>
+                {feedback.model && feedback.verdict !== "good" && (
+                  <p style={{ fontSize: 13.5, color: T.inkSoft, margin: "6px 0 0" }}>
+                    e.g. <em>“{feedback.model}”</em>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Btn
+            kind="ghost"
+            onClick={() => {
+              setWidgetMode("card");
+              setFeedback(null);
+              setRewriteText("");
+              setScreen("home");
+            }}
+            style={{ marginTop: 18, color: T.mist, borderColor: "rgba(251,251,247,0.3)" }}
+          >
+            Open BrewFluent →
+          </Btn>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------- DRILL ---------- */
   if (screen === "drill") {
@@ -1170,14 +1373,7 @@ export default function BrewFluent() {
         {header}
         <div style={{ margin: "10px 0 8px" }}>
           {targets.map((t) => (
-            <Chip
-              key={t}
-              hot={hits.some(
-                (h) =>
-                  h.toLowerCase().includes(t.toLowerCase().slice(0, 8)) ||
-                  t.toLowerCase().includes(h.toLowerCase().slice(0, 8))
-              )}
-            >
+            <Chip key={t} hot={hitMatch(hits, t)}>
               {t}
             </Chip>
           ))}
@@ -1252,13 +1448,7 @@ export default function BrewFluent() {
   /* ---------- RECAP ---------- */
   if (screen === "recap") {
     const targets = transferTargets();
-    const used = targets.filter((t) =>
-      hits.some(
-        (h) =>
-          h.toLowerCase().includes(t.toLowerCase().slice(0, 8)) ||
-          t.toLowerCase().includes(h.toLowerCase().slice(0, 8))
-      )
-    );
+    const used = targets.filter((t) => hitMatch(hits, t));
     return shell(
       <>
         {header}
