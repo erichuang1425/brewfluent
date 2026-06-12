@@ -1,0 +1,34 @@
+BrewFluent — Proprietary Software License
+Copyright (c) 2026 erichuang1425. All rights reserved.
+
+This software, its source code, design assets, and accompanying documentation
+(collectively, the "Software") are the confidential and proprietary property of
+the copyright holder. The Software is published in a public repository for
+reference, transparency, and evaluation purposes only. Public visibility does
+NOT grant any license to the Software.
+
+No license or right is granted, whether express, implied, by estoppel, or
+otherwise, to use, execute, copy, reproduce, modify, adapt, translate, merge,
+publish, distribute, transmit, sublicense, create derivative works of, or sell
+any portion of the Software, in whole or in part, without the prior written
+permission of the copyright holder.
+
+You MAY:
+  - View and read the source code in this repository.
+  - Reference it for personal, non-commercial study.
+
+You MAY NOT, without prior written permission:
+  - Use the Software, or any part of it, in any product or service.
+  - Copy, fork for redistribution, or republish the Software.
+  - Create derivative works based on the Software.
+  - Remove or alter this notice.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+For licensing inquiries, contact the copyright holder via the GitHub account
+that owns this repository (https://github.com/erichuang1425).
