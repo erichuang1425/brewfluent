@@ -489,6 +489,16 @@ const addDays = (dateStr, n) => {
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 };
+/* Friendly relative phrasing for a due date (vs. a raw YYYY-MM-DD). */
+const relativeDue = (dueStr) => {
+  const t = todayStr();
+  if (dueStr <= t) return "today";
+  if (dueStr === addDays(t, 1)) return "tomorrow";
+  const days = Math.round(
+    (new Date(dueStr + "T12:00:00") - new Date(t + "T12:00:00")) / 86400000
+  );
+  return `in ${days} days`;
+};
 
 /* Normalized matching between Claude-reported hits and target strings */
 const norm = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
@@ -498,6 +508,21 @@ const hitMatch = (hits, target) =>
     const b = norm(target);
     return a === b || a.includes(b) || b.includes(a);
   });
+/* Fragment-aware local detection: a target like "Could you … when you get a
+   chance?" lands if every non-ellipsis chunk shows up in the learner's own
+   words. This is a safety net under the NPC's self-reported hits — it keeps
+   target detection working when the model under-reports or the call falls
+   back offline (hits: []), so chips and recap still reflect what was said. */
+const fragMatch = (text, target) => {
+  const t = norm(text);
+  if (!t) return false;
+  const parts = target
+    .split("…")
+    .map(norm)
+    .filter((p) => p.length >= 3);
+  if (!parts.length) return false;
+  return parts.every((p) => t.includes(p));
+};
 
 /* Daily rotation for the new-tab "Softener of the Day" widget */
 const DAILY_SOFTENERS = [
@@ -821,6 +846,7 @@ export default function BrewFluent() {
   const [quest, setQuest] = useState({ drill: false, roleplay: false });
   const [questCelebrated, setQuestCelebrated] = useState(false);
   const [bank, setBank] = useState({}); // key `${packId}:${itemIdx}` → {packId,itemIdx,target,interval,due,misses}
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // review state
   const [reviewQueue, setReviewQueue] = useState([]);
@@ -891,6 +917,11 @@ export default function BrewFluent() {
     const id = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(id);
   }, []);
+
+  // Never leave the destructive reset "armed" once the user navigates away.
+  useEffect(() => {
+    if (screen !== "home" && confirmReset) setConfirmReset(false);
+  }, [screen]); // eslint-disable-line
 
   /* ---------- mistake bank ---------- */
   const dueItems = Object.values(bank).filter((e) => e.due <= todayStr());
@@ -983,6 +1014,26 @@ export default function BrewFluent() {
     return t.slice(0, 3);
   };
 
+  /* Targets the learner carried in but never deployed live are exactly the
+     transfer gap this product targets — bank them for spaced review so the
+     recap's "banked for spaced review" promise is real. */
+  const bankRoleplayMisses = () => {
+    const unused = transferTargets().filter((t) => !hitMatch(hits, t));
+    if (!unused.length) return;
+    setBank((prev) => {
+      const next = { ...prev };
+      for (const target of unused) {
+        const itemIdx = pack.items.findIndex((it) => it.target === target);
+        if (itemIdx < 0) continue;
+        const key = `${pack.id}:${itemIdx}`;
+        const e = next[key] || { packId: pack.id, itemIdx, target, interval: 1, misses: 0 };
+        next[key] = { ...e, misses: e.misses + 1, interval: 1, due: todayStr() };
+      }
+      saveStore("bf:mistakes", next);
+      return next;
+    });
+  };
+
   /* ---------- roleplay flow ---------- */
   const startRoleplay = async () => {
     setChat([]);
@@ -1005,7 +1056,12 @@ export default function BrewFluent() {
     setChatInput("");
     setChatBusy(true);
     const out = await roleplayTurn(pack, transferTargets(), newChat);
-    setHits((h) => [...new Set([...h, ...(out.hits || [])])]);
+    // Merge the NPC's reported hits with a local fragment match on the
+    // learner's own message, so detection survives offline fallbacks and
+    // under-reporting. Push the target string itself so downstream hitMatch
+    // resolves cleanly.
+    const localHits = transferTargets().filter((t) => fragMatch(text, t));
+    setHits((h) => [...new Set([...h, ...(out.hits || []), ...localHits])]);
     setChat((c) => [
       ...c,
       { role: "npc", text: out.reply, coach: out.coach && out.coach !== "null" ? out.coach : null },
@@ -1028,6 +1084,7 @@ export default function BrewFluent() {
     setQuest({ drill: false, roleplay: false });
     setQuestCelebrated(false);
     setBank({});
+    setConfirmReset(false);
   };
 
   /* ---------- shell ---------- */
@@ -1138,10 +1195,13 @@ export default function BrewFluent() {
             </>
           ) : (
             <p style={{ fontSize: 14, color: T.inkSoft, margin: "8px 0 0" }}>
-              All steeped. Next review:{" "}
-              {Object.values(bank)
-                .map((e) => e.due)
-                .sort()[0]}
+              All steeped. Next review{" "}
+              {relativeDue(
+                Object.values(bank)
+                  .map((e) => e.due)
+                  .sort()[0]
+              )}
+              .
             </p>
           )}
         </div>
@@ -1189,22 +1249,41 @@ export default function BrewFluent() {
           Preview: new-tab widget
         </Btn>
 
-        <button
-          onClick={resetProgress}
-          style={{
-            background: "none",
-            border: "none",
-            color: T.inkSoft,
-            fontFamily: "'Karla', sans-serif",
-            fontSize: 12.5,
-            textDecoration: "underline",
-            cursor: "pointer",
-            marginTop: 16,
-            padding: 4,
-          }}
-        >
-          Reset all progress
-        </button>
+        <div style={{ marginTop: 16 }}>
+          <button
+            onClick={() => (confirmReset ? resetProgress() : setConfirmReset(true))}
+            style={{
+              background: "none",
+              border: "none",
+              color: confirmReset ? T.bad : T.inkSoft,
+              fontFamily: "'Karla', sans-serif",
+              fontSize: 12.5,
+              fontWeight: confirmReset ? 700 : 400,
+              textDecoration: "underline",
+              cursor: "pointer",
+              padding: 4,
+            }}
+          >
+            {confirmReset ? "Tap again to wipe streak & bank" : "Reset all progress"}
+          </button>
+          {confirmReset && (
+            <button
+              onClick={() => setConfirmReset(false)}
+              style={{
+                background: "none",
+                border: "none",
+                color: T.inkSoft,
+                fontFamily: "'Karla', sans-serif",
+                fontSize: 12.5,
+                cursor: "pointer",
+                padding: 4,
+                marginLeft: 6,
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </>
     );
 
@@ -1738,7 +1817,14 @@ export default function BrewFluent() {
             </Btn>
           </div>
         ) : (
-          <Btn onClick={() => setScreen("recap")}>See your recap</Btn>
+          <Btn
+            onClick={() => {
+              bankRoleplayMisses();
+              setScreen("recap");
+            }}
+          >
+            See your recap
+          </Btn>
         )}
       </>
     );
