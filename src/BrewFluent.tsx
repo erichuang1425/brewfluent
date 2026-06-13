@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 
 /* ============================================================
-   BrewFluent — MVP Prototype v2 (solo rescope, months 0–6)
-   New in v2:
-   - Real persistence via window.storage (streak, daily quest,
-     mistake bank survive reloads)
-   - Spaced mistake bank: missed softeners are scheduled for
-     review; correct reviews double the interval, misses reset it
+   BrewFluent — Prototype (solo rescope)
+   - v2: real persistence via window.storage (streak, daily quest,
+     mistake bank survive reloads) + spaced mistake bank
+     (correct reviews double the interval, misses reset it)
+   - v1 content drop: drill packs 3–5 (Refusals, Feedback,
+     Closers) extend the original Requests/Disagreement set. Each
+     ships with its own roleplay scene and feeds the new-tab
+     widget rotation. Pure authoring — no new surfaces, the same
+     drill→transfer→roleplay→bank loop carries them.
    ============================================================ */
 
 const T = {
@@ -203,6 +206,279 @@ const PACKS = [
       },
     ],
   },
+  {
+    id: "refusals",
+    name: "Refusals",
+    blurb: "Say no without burning the bridge — or caving.",
+    roleplay: {
+      title: "The extra project",
+      setup:
+        "Your colleague Dev wants you to take over a chunk of their project on top of your already-full plate. Decline — clearly — but keep the relationship and maybe leave a small door open.",
+      npc: "Dev, an overloaded but likeable colleague who asks you to take on part of their project. Pushes once ('it's just a few hours, honestly'), but accepts a warm, clear no — especially if you name a reason or offer a small alternative.",
+    },
+    items: [
+      {
+        type: "tap",
+        prompt: "A coworker asks you to join yet another optional committee. You're already full.",
+        target: "I won't be able to take that on, but …",
+        options: [
+          { text: "No, I don't have time for that.", verdict: "blunt", gauge: 10 },
+          {
+            text: "I won't be able to take that on right now — my plate's full through launch. Ask me again after?",
+            verdict: "good",
+            gauge: 54,
+          },
+          {
+            text:
+              "Oh gosh, I feel terrible, I really wish I could, maybe I could try to squeeze it in somehow if you truly need me, I just hate letting anyone down…",
+            verdict: "overdone",
+            gauge: 93,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Soften this no to a teammate:",
+        blunt: "I can't help, I'm busy.",
+        target: "I'm stretched thin this week — could we look at next week?",
+        hint: "Name the constraint, then offer a door instead of just a wall.",
+      },
+      {
+        type: "tap",
+        prompt: "Your manager floats weekend work for a task that isn't actually urgent.",
+        target: "I'd rather not … — could we …?",
+        options: [
+          { text: "I'm not working the weekend.", verdict: "blunt", gauge: 12 },
+          {
+            text: "I'd rather not give up the weekend for this — could we fit it in first thing Monday instead?",
+            verdict: "good",
+            gauge: 55,
+          },
+          {
+            text:
+              "I mean if it's absolutely critical I guess I could, it's probably fine, I don't want to be difficult, honestly whatever works for you…",
+            verdict: "overdone",
+            gauge: 90,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Decline a meeting invite without ghosting it:",
+        blunt: "I'm not coming to this.",
+        target: "I don't think I'm needed here — happy to read the notes after.",
+        hint: "Question your own necessity, and stay reachable.",
+      },
+      {
+        type: "tap",
+        prompt: "A friend asks to borrow money you'd rather not lend.",
+        target: "I'm not able to do that, but …",
+        options: [
+          { text: "No. I don't lend money.", verdict: "blunt", gauge: 8 },
+          {
+            text: "I'm not able to lend money — it's a line I keep with friends — but I'm happy to help you think it through.",
+            verdict: "good",
+            gauge: 53,
+          },
+          {
+            text:
+              "Ugh I'm so sorry, it's not you at all, I just, money's weird for me right now, well not weird exactly, I don't know, maybe a little?",
+            verdict: "overdone",
+            gauge: 92,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Turn down a vendor's pitch by email:",
+        blunt: "Not interested.",
+        target: "This isn't a fit for us right now — I'll reach out if that changes.",
+        hint: "Close the door gently and leave a hinge on it.",
+      },
+    ],
+  },
+  {
+    id: "feedback",
+    name: "Feedback",
+    blurb: "Give the hard note without crushing them — or burying it.",
+    roleplay: {
+      title: "The first draft",
+      setup:
+        "Your teammate Lin just shared a deck they're proud of, but the opening buries the key number and it runs twice as long as it should. Give the honest feedback and keep them motivated.",
+      npc: "Lin, an eager teammate who shares a draft deck they're proud of. A little defensive at first ('I worked all weekend on this'), but receptive to specific, kindly-framed feedback — and visibly grateful when you also point to what's working.",
+    },
+    items: [
+      {
+        type: "tap",
+        prompt: "A teammate's slide is too dense. You want them to cut it down.",
+        target: "One thing that might land harder is …",
+        options: [
+          { text: "This slide is way too cluttered.", verdict: "blunt", gauge: 14 },
+          {
+            text: "One thing that might land harder is trimming this to the top three points — the rest could be backup.",
+            verdict: "good",
+            gauge: 55,
+          },
+          {
+            text:
+              "It's honestly great, really great, maybe there could perhaps possibly be the tiniest bit much on here but it's totally fine, ignore me!",
+            verdict: "overdone",
+            gauge: 94,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Soften this feedback on a coworker's email:",
+        blunt: "This email is confusing.",
+        target: "I had to read this twice — could the ask go up top?",
+        hint: "Own the confusion first, then point to the fix.",
+      },
+      {
+        type: "tap",
+        prompt: "An intern's code works but ignores the shared style guide.",
+        target: "This works — one small thing for next time …",
+        options: [
+          { text: "You didn't follow the style guide.", verdict: "blunt", gauge: 16 },
+          {
+            text: "This works nicely — one small thing for next time: we lint with the shared config, so run it before pushing.",
+            verdict: "good",
+            gauge: 56,
+          },
+          {
+            text:
+              "It's amazing, you're doing so well, there's like the teeniest style thing but honestly who even cares about that, you're great!",
+            verdict: "overdone",
+            gauge: 91,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Give a writer a hard note kindly:",
+        blunt: "The ending doesn't work.",
+        target: "The ending lost me a little — what were you going for there?",
+        hint: "Lead with your honest reaction, then ask before prescribing.",
+      },
+      {
+        type: "tap",
+        prompt: "A peer keeps talking over people in standup. You want to flag it privately.",
+        target: "I've noticed … — would you be open to …?",
+        options: [
+          { text: "You interrupt people constantly.", verdict: "blunt", gauge: 9 },
+          {
+            text: "I've noticed we sometimes talk over each other in standup — would you be open to leaving a beat after people finish?",
+            verdict: "good",
+            gauge: 53,
+          },
+          {
+            text:
+              "This is probably just me being oversensitive and it's really not a big deal at all, forget I said anything, but sometimes, maybe, occasionally…?",
+            verdict: "overdone",
+            gauge: 93,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Soften this performance note about a repeated slip:",
+        blunt: "You missed the deadline again.",
+        target: "This is the second slip — what's getting in the way?",
+        hint: "State the pattern plainly, then open a door to the cause.",
+      },
+    ],
+  },
+  {
+    id: "closers",
+    name: "Closers",
+    blurb: "End it cleanly without seeming rude — or trailing off forever.",
+    roleplay: {
+      title: "The overrun call",
+      setup:
+        "You're on a call with a chatty client, Marco, that should have ended ten minutes ago. You have a hard stop next. Wrap it up warmly without making him feel cut off.",
+      npc: "Marco, a warm, talkative client who keeps opening new threads as the call runs long. Takes a graceful wrap-up well — especially if you name a next step and close on appreciation.",
+    },
+    items: [
+      {
+        type: "tap",
+        prompt: "A coworker drops by your desk and keeps chatting. You need to get back to work.",
+        target: "I should let you go — …",
+        options: [
+          { text: "I need to work now.", verdict: "blunt", gauge: 11 },
+          {
+            text: "I should get back to this before my next meeting — let's grab coffee later though?",
+            verdict: "good",
+            gauge: 54,
+          },
+          {
+            text:
+              "No no it's totally fine, I have time, well, I sort of have a thing but it's not important, we can keep talking if you want, really…",
+            verdict: "overdone",
+            gauge: 89,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Wrap up a long email thread:",
+        blunt: "Stop emailing me about this.",
+        target: "I think we've got what we need here — let's pick it back up if anything changes.",
+        hint: "Declare it resolved, then leave a reopen clause.",
+      },
+      {
+        type: "tap",
+        prompt: "A meeting has hit time and people are still talking.",
+        target: "In the interest of time, could we …?",
+        options: [
+          { text: "We're out of time, wrap it up.", verdict: "blunt", gauge: 13 },
+          {
+            text: "In the interest of time, could we take the rest to email and give everyone their next 30 back?",
+            verdict: "good",
+            gauge: 56,
+          },
+          {
+            text:
+              "I really don't want to rush anyone, please keep going if there's more, I just maybe sort of have another thing but it can wait, honestly…",
+            verdict: "overdone",
+            gauge: 90,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "End a call with a chatty client:",
+        blunt: "I have to go.",
+        target: "I've got a hard stop in a minute — this was really useful, thank you.",
+        hint: "Name the stop, then close on warmth.",
+      },
+      {
+        type: "tap",
+        prompt: "A networking chat at an event has run its course.",
+        target: "It was great talking — I'll let you …",
+        options: [
+          { text: "Anyway, I'm going to go.", verdict: "blunt", gauge: 12 },
+          {
+            text: "It was great talking — I'll let you get back to the room, but let's stay in touch.",
+            verdict: "good",
+            gauge: 55,
+          },
+          {
+            text:
+              "Well I guess maybe I should possibly let you go, unless you wanted to keep chatting, I'm easy either way, totally up to you…",
+            verdict: "overdone",
+            gauge: 91,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Close a one-on-one that's wandering:",
+        blunt: "Are we done?",
+        target: "I think we've covered the big things — anything urgent before we wrap?",
+        hint: "Summarize the progress, then offer one last opening.",
+      },
+    ],
+  },
 ];
 
 /* ----------------------- Dates & storage ----------------------- */
@@ -221,6 +497,69 @@ const addDays = (dateStr, n) => {
   d.setDate(d.getDate() + n);
   return ymd(d);
 };
+
+/* Normalized matching between Claude-reported hits and target strings */
+const norm = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
+const hitMatch = (hits, target) =>
+  hits.some((h) => {
+    const a = norm(h);
+    const b = norm(target);
+    return a === b || a.includes(b) || b.includes(a);
+  });
+
+/* Daily rotation for the new-tab "Softener of the Day" widget */
+const DAILY_SOFTENERS = [
+  {
+    pattern: "Could you … when you get a chance?",
+    blunt: "Review my slides before 4.",
+    soft: "Could you take a look at my slides when you get a chance before 4?",
+  },
+  {
+    pattern: "Mind if I …?",
+    blunt: "Give me your charger.",
+    soft: "Mind if I borrow your charger for a bit?",
+  },
+  {
+    pattern: "I see it a bit differently …",
+    blunt: "That timeline is wrong.",
+    soft: "I see it a bit differently — two weeks feels tight once QA is in.",
+  },
+  {
+    pattern: "My worry with that is …",
+    blunt: "That idea won't work.",
+    soft: "My worry with that is the rollout timing — could we phase it?",
+  },
+  {
+    pattern: "Would it work for you if …?",
+    blunt: "Move our 1:1 to Thursday.",
+    soft: "Would it work for you if we moved our 1:1 to Thursday?",
+  },
+  {
+    pattern: "I remember it slightly differently …",
+    blunt: "No, that's not what happened.",
+    soft: "Hmm, I remember it slightly differently — wasn't the demo on Tuesday?",
+  },
+  {
+    pattern: "Would you be up for … instead?",
+    blunt: "No. I hate that place.",
+    soft: "I'm not huge on that place — would you be up for ramen instead?",
+  },
+  {
+    pattern: "I won't be able to take that on, but …",
+    blunt: "No, I don't have time for that.",
+    soft: "I won't be able to take that on right now — my plate's full through launch.",
+  },
+  {
+    pattern: "One thing that might land harder is …",
+    blunt: "This slide is way too cluttered.",
+    soft: "One thing that might land harder is trimming this to the top three points.",
+  },
+  {
+    pattern: "I should let you go — …",
+    blunt: "I need to work now.",
+    soft: "I should get back to this before my next meeting — let's grab coffee later?",
+  },
+];
 
 const hasStorage = typeof window !== "undefined" && window.storage;
 
@@ -312,7 +651,15 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     .map((s) => s.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim())
     .filter((s) => s.length >= 4);
   const echoesTarget = targetFrags.some((f) => a.includes(f));
-  const soft = echoesTarget || /could|would|mind|possible|wonder|chance|please|\?/.test(a);
+  // Question-form request softeners ...
+  const askSoft = /could|would|mind|possible|wonder|chance|please|\?/.test(a);
+  // ... and declarative softeners (refusals/closers carry no question form):
+  // hedged framing, appreciation, or an offered alternative/continuation.
+  const declSoft =
+    /\bi think\b|i'?d rather|able to|happy to|let'?s|thank|appreciate|reach out|stay in touch|for next time|in the interest|hard stop|differently|worry|what i mean|one thing|let you/.test(
+      a
+    );
+  const soft = echoesTarget || askSoft || declSoft;
   const over = (a.match(/sorry|maybe|possibly|perhaps|bother|tiny|just/g) || []).length >= 3;
   if (over)
     return {
@@ -325,13 +672,13 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     return {
       verdict: "good",
       gauge: 55,
-      feedback: "Nicely softened — a question form does most of the work.",
+      feedback: "Nicely softened — clear, but no longer a bare command.",
       model: item.target,
     };
   return {
     verdict: "blunt",
     gauge: 15,
-    feedback: "Still reads as an order. Try a question form like: " + item.target,
+    feedback: "Still reads as an order. Try cushioning it, e.g. " + item.target,
     model: item.target,
   };
 }
@@ -353,7 +700,7 @@ ${history}
 
 Rules:
 - Reply in character, 1-3 sentences, natural spoken English.
-- In "hits", list any practice targets the learner clearly used (paraphrases count) in their LAST message only.
+- In "hits", copy verbatim the target strings (exactly as written in PRACTICE TARGETS above) that the learner used or closely paraphrased in their LAST message only. Never invent strings that are not in the list.
 - If the learner's last message was blunt or over-hedged, set "coach" to one short whispered tip; otherwise null.
 - Set "done" true once the conversation reaches a natural resolution (agreement/compromise), and make your reply a closing line.
 
@@ -516,6 +863,10 @@ export default function BrewFluent() {
   const [reviewIdx, setReviewIdx] = useState(0);
   const [reviewDoneCount, setReviewDoneCount] = useState(0);
 
+  // new-tab widget preview
+  const [clock, setClock] = useState(new Date());
+  const [widgetMode, setWidgetMode] = useState("card"); // card | drill
+
   // roleplay state
   const [chat, setChat] = useState([]);
   const [chatInput, setChatInput] = useState("");
@@ -571,6 +922,11 @@ export default function BrewFluent() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, chatBusy]);
+
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   /* ---------- mistake bank ---------- */
   const dueItems = Object.values(bank).filter((e) => e.due <= todayStr());
@@ -856,6 +1212,19 @@ export default function BrewFluent() {
           </button>
         ))}
 
+        <Btn
+          kind="ghost"
+          onClick={() => {
+            setWidgetMode("card");
+            setFeedback(null);
+            setRewriteText("");
+            setScreen("widget");
+          }}
+          style={{ marginTop: 4 }}
+        >
+          Preview: new-tab widget
+        </Btn>
+
         <button
           onClick={resetProgress}
           style={{
@@ -874,6 +1243,146 @@ export default function BrewFluent() {
         </button>
       </>
     );
+
+  /* ---------- NEW-TAB WIDGET PREVIEW ---------- */
+  if (screen === "widget") {
+    // Index by the learner's *local* calendar day so the card flips at their
+    // midnight (matching the adjacent local clock), not at UTC midnight.
+    // Date.UTC over the local Y/M/D gives a tz-independent, DST-safe day count.
+    const localDayNum = Math.floor(
+      Date.UTC(clock.getFullYear(), clock.getMonth(), clock.getDate()) / 86400000
+    );
+    const s = DAILY_SOFTENERS[localDayNum % DAILY_SOFTENERS.length];
+    const hh = clock.getHours().toString().padStart(2, "0");
+    const mm = clock.getMinutes().toString().padStart(2, "0");
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: T.leafDeep,
+          color: T.surface,
+          fontFamily: "'Karla', sans-serif",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Karla:wght@400;700&display=swap');
+          * { box-sizing: border-box; }
+          textarea:focus, button:focus-visible { outline: 2.5px solid ${T.mist}; outline-offset: 2px; }
+          @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+        `}</style>
+        <div style={{ width: "100%", maxWidth: 460, padding: "36px 22px", textAlign: "center" }}>
+          <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", opacity: 0.65 }}>
+            New tab · prototype preview
+          </div>
+          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 58, fontWeight: 500, margin: "8px 0 0", lineHeight: 1 }}>
+            {hh}:{mm}
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.7, margin: "8px 0 28px" }}>
+            {streak} day steep{streak === 1 ? "" : "s"} ◉
+          </div>
+
+          <div
+            style={{
+              background: "rgba(251,251,247,0.07)",
+              border: "1px solid rgba(251,251,247,0.18)",
+              borderRadius: 18,
+              padding: "22px 20px",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: T.mist, fontWeight: 700 }}>
+              Softener of the day
+            </div>
+            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 23, fontWeight: 650, lineHeight: 1.3, margin: "10px 0 14px" }}>
+              {s.pattern}
+            </div>
+
+            {widgetMode === "card" && (
+              <>
+                <div style={{ fontSize: 14, opacity: 0.6, textDecoration: "line-through" }}>“{s.blunt}”</div>
+                <div style={{ fontSize: 15.5, marginTop: 6, color: T.mist }}>“{s.soft}”</div>
+                <Btn
+                  onClick={() => {
+                    setRewriteText("");
+                    setFeedback(null);
+                    setWidgetMode("drill");
+                  }}
+                  style={{ marginTop: 20, background: T.surface, color: T.leafDeep }}
+                >
+                  10-second drill
+                </Btn>
+              </>
+            )}
+
+            {widgetMode === "drill" && !feedback && (
+              <>
+                <div style={{ fontSize: 14.5, marginBottom: 10 }}>
+                  Soften this: <em>“{s.blunt}”</em>
+                </div>
+                <textarea
+                  value={rewriteText}
+                  onChange={(e) => setRewriteText(e.target.value)}
+                  placeholder="Your softer version…"
+                  rows={2}
+                  style={{
+                    width: "100%",
+                    fontFamily: "'Karla', sans-serif",
+                    fontSize: 15,
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(251,251,247,0.3)",
+                    background: "rgba(251,251,247,0.1)",
+                    color: T.surface,
+                    resize: "vertical",
+                    marginBottom: 10,
+                  }}
+                />
+                <Btn
+                  disabled={!rewriteText.trim() || scoring}
+                  onClick={async () => {
+                    setScoring(true);
+                    const r = await scoreRewrite({ blunt: s.blunt, target: s.pattern }, rewriteText.trim());
+                    setFeedback(r);
+                    setScoring(false);
+                  }}
+                  style={{ background: T.surface, color: T.leafDeep }}
+                >
+                  {scoring ? "Steeping…" : "Check my brew"}
+                </Btn>
+              </>
+            )}
+
+            {widgetMode === "drill" && feedback && (
+              <div style={{ background: T.surface, color: T.ink, borderRadius: 14, padding: "14px 16px" }}>
+                <SteepGauge gauge={feedback.gauge} verdict={feedback.verdict} />
+                <p style={{ fontSize: 14, lineHeight: 1.5, margin: "12px 0 0" }}>{feedback.feedback}</p>
+                {feedback.model && feedback.verdict !== "good" && (
+                  <p style={{ fontSize: 13.5, color: T.inkSoft, margin: "6px 0 0" }}>
+                    e.g. <em>“{feedback.model}”</em>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Btn
+            kind="ghost"
+            onClick={() => {
+              setWidgetMode("card");
+              setFeedback(null);
+              setRewriteText("");
+              setScreen("home");
+            }}
+            style={{ marginTop: 18, color: T.mist, borderColor: "rgba(251,251,247,0.3)" }}
+          >
+            Open BrewFluent →
+          </Btn>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------- DRILL ---------- */
   if (screen === "drill") {
@@ -921,10 +1430,10 @@ export default function BrewFluent() {
                       gauge: o.gauge,
                       feedback:
                         o.verdict === "good"
-                          ? "Just right — softened, but the request is still unmistakable."
+                          ? "Just right — softened, but the point still lands."
                           : o.verdict === "blunt"
-                          ? "Reads as an order. A question form would do the softening for you."
-                          : "Over-steeped — stacked hedges bury the actual request.",
+                          ? "Reads as too blunt — soften the edge and it still gets through."
+                          : "Over-steeped — the stacked hedges bury the point.",
                     });
                   }}
                   style={{
@@ -1206,14 +1715,7 @@ export default function BrewFluent() {
         {header}
         <div style={{ margin: "10px 0 8px" }}>
           {targets.map((t) => (
-            <Chip
-              key={t}
-              hot={hits.some(
-                (h) =>
-                  h.toLowerCase().includes(t.toLowerCase().slice(0, 8)) ||
-                  t.toLowerCase().includes(h.toLowerCase().slice(0, 8))
-              )}
-            >
+            <Chip key={t} hot={hitMatch(hits, t)}>
               {t}
             </Chip>
           ))}
@@ -1288,13 +1790,7 @@ export default function BrewFluent() {
   /* ---------- RECAP ---------- */
   if (screen === "recap") {
     const targets = transferTargets();
-    const used = targets.filter((t) =>
-      hits.some(
-        (h) =>
-          h.toLowerCase().includes(t.toLowerCase().slice(0, 8)) ||
-          t.toLowerCase().includes(h.toLowerCase().slice(0, 8))
-      )
-    );
+    const used = targets.filter((t) => hitMatch(hits, t));
     return shell(
       <>
         {header}
