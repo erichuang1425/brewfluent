@@ -485,7 +485,9 @@ const PACKS = [
 
 /* Local-calendar YYYY-MM-DD (not UTC): a daily streak / spaced-review app
    should roll over at the learner's midnight, and relative labels like
-   "tomorrow" must agree with their wall clock. */
+   "tomorrow" must agree with their wall clock. Using toISOString() would key
+   the day off UTC, crediting an Eastern user's late-evening quest to the
+   next day. */
 const ymd = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const todayStr = () => ymd(new Date());
@@ -665,6 +667,17 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     if (parsed && parsed.verdict) return parsed;
   } catch {}
   const a = answer.toLowerCase();
+  // Does the rewrite echo the supplied target pattern? Strip the ellipsis
+  // placeholder, split on its clauses, and test each lead phrase against the
+  // answer. This makes the fallback work for every pack (e.g. the Disagreement
+  // softeners "My worry with that is …", "I remember it slightly differently …")
+  // instead of only the request-style words below.
+  const targetFrags = item.target
+    .toLowerCase()
+    .split(/…|\.\.\.|—|-/)
+    .map((s) => s.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim())
+    .filter((s) => s.length >= 4);
+  const echoesTarget = targetFrags.some((f) => a.includes(f));
   // Question-form request softeners ...
   const askSoft = /could|would|mind|possible|wonder|chance|please|\?/.test(a);
   // ... and declarative softeners (refusals/closers carry no question form):
@@ -673,7 +686,7 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     /\bi think\b|i'?d rather|able to|happy to|let'?s|thank|appreciate|reach out|stay in touch|for next time|in the interest|hard stop|differently|worry|what i mean|one thing|let you/.test(
       a
     );
-  const soft = askSoft || declSoft;
+  const soft = echoesTarget || askSoft || declSoft;
   const over = (a.match(/sorry|maybe|possibly|perhaps|bother|tiny|just/g) || []).length >= 3;
   if (over)
     return {
@@ -724,13 +737,31 @@ Respond ONLY with JSON, no markdown:
     const parsed = parseJSON(await claude(prompt));
     if (parsed && parsed.reply) return parsed;
   } catch {}
-  return {
-    reply: "(They look up from their screen.) Okay — tell me more about what you need.",
-    hits: [],
-    coach: null,
-    done: false,
-    offline: true, // model unavailable — hit detection this turn is unreliable
-  };
+  // Offline fallback — stay in character for the *selected* pack and let the
+  // scene actually progress toward a resolution instead of repeating one opener
+  // until the turn cap. Replies and completion are derived from the pack and
+  // transcript. We still flag `offline: true` so sendChat skips auto-banking:
+  // local hit detection can't reliably judge paraphrases, so we light chips
+  // leniently here but never schedule a "miss" we can't verify.
+  const npcName = (pack.roleplay.npc.split(/[,(]/)[0] || "They").trim();
+  const userTurns = transcript.filter((m) => m.role === "user");
+  const lastUser = (userTurns[userTurns.length - 1] || {}).text || "";
+  const lu = lastUser.toLowerCase();
+  const hits = targets.filter((t) =>
+    t
+      .toLowerCase()
+      .split(/…|\.\.\.|—|-/)
+      .map((s) => s.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim())
+      .filter((s) => s.length >= 4)
+      .some((f) => lu.includes(f))
+  );
+  const done = userTurns.length >= 3;
+  const reply = done
+    ? `(${npcName} nods.) Okay — that works for me. Let's go with that.`
+    : userTurns.length <= 1
+    ? `(${npcName} looks up.) Okay — tell me more about what you have in mind.`
+    : `(${npcName} considers it.) Fair enough — what would you suggest we do?`;
+  return { reply, hits, coach: null, done, offline: true };
 }
 
 /* ----------------------- UI atoms ----------------------- */
@@ -1313,7 +1344,13 @@ export default function BrewFluent() {
 
   /* ---------- NEW-TAB WIDGET PREVIEW ---------- */
   if (screen === "widget") {
-    const s = DAILY_SOFTENERS[Math.floor(Date.now() / 86400000) % DAILY_SOFTENERS.length];
+    // Index by the learner's *local* calendar day so the card flips at their
+    // midnight (matching the adjacent local clock), not at UTC midnight.
+    // Date.UTC over the local Y/M/D gives a tz-independent, DST-safe day count.
+    const localDayNum = Math.floor(
+      Date.UTC(clock.getFullYear(), clock.getMonth(), clock.getDate()) / 86400000
+    );
+    const s = DAILY_SOFTENERS[localDayNum % DAILY_SOFTENERS.length];
     const hh = clock.getHours().toString().padStart(2, "0");
     const mm = clock.getMinutes().toString().padStart(2, "0");
     return (
@@ -1331,6 +1368,7 @@ export default function BrewFluent() {
           @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Karla:wght@400;700&display=swap');
           * { box-sizing: border-box; }
           textarea:focus, button:focus-visible { outline: 2.5px solid ${T.mist}; outline-offset: 2px; }
+          @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
         `}</style>
         <div style={{ width: "100%", maxWidth: 460, padding: "36px 22px", textAlign: "center" }}>
           <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", opacity: 0.65 }}>
@@ -1702,7 +1740,7 @@ export default function BrewFluent() {
             )}
             <p style={{ fontSize: 13, color: T.inkSoft, margin: "10px 0 0" }}>
               {feedback.verdict === "good"
-                ? `Next review in ${entry.interval * 2} day${entry.interval * 2 === 1 ? "" : "s"}.`
+                ? `Next review in ${entry.interval} day${entry.interval === 1 ? "" : "s"}.`
                 : "Back tomorrow."}
             </p>
             <Btn
