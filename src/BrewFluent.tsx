@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 
 /* ============================================================
-   BrewFluent — MVP Prototype v2 (solo rescope, months 0–6)
-   New in v2:
-   - Real persistence via window.storage (streak, daily quest,
-     mistake bank survive reloads)
-   - Spaced mistake bank: missed softeners are scheduled for
-     review; correct reviews double the interval, misses reset it
+   BrewFluent — Prototype (solo rescope)
+   - v2: real persistence via window.storage (streak, daily quest,
+     mistake bank survive reloads) + spaced mistake bank
+     (correct reviews double the interval, misses reset it)
+   - v1 content drop: drill packs 3–5 (Refusals, Feedback,
+     Closers) extend the original Requests/Disagreement set. Each
+     ships with its own roleplay scene and feeds the new-tab
+     widget rotation. Pure authoring — no new surfaces, the same
+     drill→transfer→roleplay→bank loop carries them.
    ============================================================ */
 
 const T = {
@@ -203,6 +206,279 @@ const PACKS = [
       },
     ],
   },
+  {
+    id: "refusals",
+    name: "Refusals",
+    blurb: "Say no without burning the bridge — or caving.",
+    roleplay: {
+      title: "The extra project",
+      setup:
+        "Your colleague Dev wants you to take over a chunk of their project on top of your already-full plate. Decline — clearly — but keep the relationship and maybe leave a small door open.",
+      npc: "Dev, an overloaded but likeable colleague who asks you to take on part of their project. Pushes once ('it's just a few hours, honestly'), but accepts a warm, clear no — especially if you name a reason or offer a small alternative.",
+    },
+    items: [
+      {
+        type: "tap",
+        prompt: "A coworker asks you to join yet another optional committee. You're already full.",
+        target: "I won't be able to take that on, but …",
+        options: [
+          { text: "No, I don't have time for that.", verdict: "blunt", gauge: 10 },
+          {
+            text: "I won't be able to take that on right now — my plate's full through launch. Ask me again after?",
+            verdict: "good",
+            gauge: 54,
+          },
+          {
+            text:
+              "Oh gosh, I feel terrible, I really wish I could, maybe I could try to squeeze it in somehow if you truly need me, I just hate letting anyone down…",
+            verdict: "overdone",
+            gauge: 93,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Soften this no to a teammate:",
+        blunt: "I can't help, I'm busy.",
+        target: "I'm stretched thin this week — could we look at next week?",
+        hint: "Name the constraint, then offer a door instead of just a wall.",
+      },
+      {
+        type: "tap",
+        prompt: "Your manager floats weekend work for a task that isn't actually urgent.",
+        target: "I'd rather not … — could we …?",
+        options: [
+          { text: "I'm not working the weekend.", verdict: "blunt", gauge: 12 },
+          {
+            text: "I'd rather not give up the weekend for this — could we fit it in first thing Monday instead?",
+            verdict: "good",
+            gauge: 55,
+          },
+          {
+            text:
+              "I mean if it's absolutely critical I guess I could, it's probably fine, I don't want to be difficult, honestly whatever works for you…",
+            verdict: "overdone",
+            gauge: 90,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Decline a meeting invite without ghosting it:",
+        blunt: "I'm not coming to this.",
+        target: "I don't think I'm needed here — happy to read the notes after.",
+        hint: "Question your own necessity, and stay reachable.",
+      },
+      {
+        type: "tap",
+        prompt: "A friend asks to borrow money you'd rather not lend.",
+        target: "I'm not able to do that, but …",
+        options: [
+          { text: "No. I don't lend money.", verdict: "blunt", gauge: 8 },
+          {
+            text: "I'm not able to lend money — it's a line I keep with friends — but I'm happy to help you think it through.",
+            verdict: "good",
+            gauge: 53,
+          },
+          {
+            text:
+              "Ugh I'm so sorry, it's not you at all, I just, money's weird for me right now, well not weird exactly, I don't know, maybe a little?",
+            verdict: "overdone",
+            gauge: 92,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Turn down a vendor's pitch by email:",
+        blunt: "Not interested.",
+        target: "This isn't a fit for us right now — I'll reach out if that changes.",
+        hint: "Close the door gently and leave a hinge on it.",
+      },
+    ],
+  },
+  {
+    id: "feedback",
+    name: "Feedback",
+    blurb: "Give the hard note without crushing them — or burying it.",
+    roleplay: {
+      title: "The first draft",
+      setup:
+        "Your teammate Lin just shared a deck they're proud of, but the opening buries the key number and it runs twice as long as it should. Give the honest feedback and keep them motivated.",
+      npc: "Lin, an eager teammate who shares a draft deck they're proud of. A little defensive at first ('I worked all weekend on this'), but receptive to specific, kindly-framed feedback — and visibly grateful when you also point to what's working.",
+    },
+    items: [
+      {
+        type: "tap",
+        prompt: "A teammate's slide is too dense. You want them to cut it down.",
+        target: "One thing that might land harder is …",
+        options: [
+          { text: "This slide is way too cluttered.", verdict: "blunt", gauge: 14 },
+          {
+            text: "One thing that might land harder is trimming this to the top three points — the rest could be backup.",
+            verdict: "good",
+            gauge: 55,
+          },
+          {
+            text:
+              "It's honestly great, really great, maybe there could perhaps possibly be the tiniest bit much on here but it's totally fine, ignore me!",
+            verdict: "overdone",
+            gauge: 94,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Soften this feedback on a coworker's email:",
+        blunt: "This email is confusing.",
+        target: "I had to read this twice — could the ask go up top?",
+        hint: "Own the confusion first, then point to the fix.",
+      },
+      {
+        type: "tap",
+        prompt: "An intern's code works but ignores the shared style guide.",
+        target: "This works — one small thing for next time …",
+        options: [
+          { text: "You didn't follow the style guide.", verdict: "blunt", gauge: 16 },
+          {
+            text: "This works nicely — one small thing for next time: we lint with the shared config, so run it before pushing.",
+            verdict: "good",
+            gauge: 56,
+          },
+          {
+            text:
+              "It's amazing, you're doing so well, there's like the teeniest style thing but honestly who even cares about that, you're great!",
+            verdict: "overdone",
+            gauge: 91,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Give a writer a hard note kindly:",
+        blunt: "The ending doesn't work.",
+        target: "The ending lost me a little — what were you going for there?",
+        hint: "Lead with your honest reaction, then ask before prescribing.",
+      },
+      {
+        type: "tap",
+        prompt: "A peer keeps talking over people in standup. You want to flag it privately.",
+        target: "I've noticed … — would you be open to …?",
+        options: [
+          { text: "You interrupt people constantly.", verdict: "blunt", gauge: 9 },
+          {
+            text: "I've noticed we sometimes talk over each other in standup — would you be open to leaving a beat after people finish?",
+            verdict: "good",
+            gauge: 53,
+          },
+          {
+            text:
+              "This is probably just me being oversensitive and it's really not a big deal at all, forget I said anything, but sometimes, maybe, occasionally…?",
+            verdict: "overdone",
+            gauge: 93,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Soften this performance note about a repeated slip:",
+        blunt: "You missed the deadline again.",
+        target: "This is the second slip — what's getting in the way?",
+        hint: "State the pattern plainly, then open a door to the cause.",
+      },
+    ],
+  },
+  {
+    id: "closers",
+    name: "Closers",
+    blurb: "End it cleanly without seeming rude — or trailing off forever.",
+    roleplay: {
+      title: "The overrun call",
+      setup:
+        "You're on a call with a chatty client, Marco, that should have ended ten minutes ago. You have a hard stop next. Wrap it up warmly without making him feel cut off.",
+      npc: "Marco, a warm, talkative client who keeps opening new threads as the call runs long. Takes a graceful wrap-up well — especially if you name a next step and close on appreciation.",
+    },
+    items: [
+      {
+        type: "tap",
+        prompt: "A coworker drops by your desk and keeps chatting. You need to get back to work.",
+        target: "I should let you go — …",
+        options: [
+          { text: "I need to work now.", verdict: "blunt", gauge: 11 },
+          {
+            text: "I should get back to this before my next meeting — let's grab coffee later though?",
+            verdict: "good",
+            gauge: 54,
+          },
+          {
+            text:
+              "No no it's totally fine, I have time, well, I sort of have a thing but it's not important, we can keep talking if you want, really…",
+            verdict: "overdone",
+            gauge: 89,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Wrap up a long email thread:",
+        blunt: "Stop emailing me about this.",
+        target: "I think we've got what we need here — let's pick it back up if anything changes.",
+        hint: "Declare it resolved, then leave a reopen clause.",
+      },
+      {
+        type: "tap",
+        prompt: "A meeting has hit time and people are still talking.",
+        target: "In the interest of time, could we …?",
+        options: [
+          { text: "We're out of time, wrap it up.", verdict: "blunt", gauge: 13 },
+          {
+            text: "In the interest of time, could we take the rest to email and give everyone their next 30 back?",
+            verdict: "good",
+            gauge: 56,
+          },
+          {
+            text:
+              "I really don't want to rush anyone, please keep going if there's more, I just maybe sort of have another thing but it can wait, honestly…",
+            verdict: "overdone",
+            gauge: 90,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "End a call with a chatty client:",
+        blunt: "I have to go.",
+        target: "I've got a hard stop in a minute — this was really useful, thank you.",
+        hint: "Name the stop, then close on warmth.",
+      },
+      {
+        type: "tap",
+        prompt: "A networking chat at an event has run its course.",
+        target: "It was great talking — I'll let you …",
+        options: [
+          { text: "Anyway, I'm going to go.", verdict: "blunt", gauge: 12 },
+          {
+            text: "It was great talking — I'll let you get back to the room, but let's stay in touch.",
+            verdict: "good",
+            gauge: 55,
+          },
+          {
+            text:
+              "Well I guess maybe I should possibly let you go, unless you wanted to keep chatting, I'm easy either way, totally up to you…",
+            verdict: "overdone",
+            gauge: 91,
+          },
+        ],
+      },
+      {
+        type: "rewrite",
+        prompt: "Close a one-on-one that's wandering:",
+        blunt: "Are we done?",
+        target: "I think we've covered the big things — anything urgent before we wrap?",
+        hint: "Summarize the progress, then offer one last opening.",
+      },
+    ],
+  },
 ];
 
 /* ----------------------- Dates & storage ----------------------- */
@@ -259,6 +535,21 @@ const DAILY_SOFTENERS = [
     pattern: "Would you be up for … instead?",
     blunt: "No. I hate that place.",
     soft: "I'm not huge on that place — would you be up for ramen instead?",
+  },
+  {
+    pattern: "I won't be able to take that on, but …",
+    blunt: "No, I don't have time for that.",
+    soft: "I won't be able to take that on right now — my plate's full through launch.",
+  },
+  {
+    pattern: "One thing that might land harder is …",
+    blunt: "This slide is way too cluttered.",
+    soft: "One thing that might land harder is trimming this to the top three points.",
+  },
+  {
+    pattern: "I should let you go — …",
+    blunt: "I need to work now.",
+    soft: "I should get back to this before my next meeting — let's grab coffee later?",
   },
 ];
 
@@ -341,7 +632,15 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     if (parsed && parsed.verdict) return parsed;
   } catch {}
   const a = answer.toLowerCase();
-  const soft = /could|would|mind|possible|wonder|chance|please|\?/.test(a);
+  // Question-form request softeners ...
+  const askSoft = /could|would|mind|possible|wonder|chance|please|\?/.test(a);
+  // ... and declarative softeners (refusals/closers carry no question form):
+  // hedged framing, appreciation, or an offered alternative/continuation.
+  const declSoft =
+    /\bi think\b|i'?d rather|able to|happy to|let'?s|thank|appreciate|reach out|stay in touch|for next time|in the interest|hard stop|differently|worry|what i mean|one thing|let you/.test(
+      a
+    );
+  const soft = askSoft || declSoft;
   const over = (a.match(/sorry|maybe|possibly|perhaps|bother|tiny|just/g) || []).length >= 3;
   if (over)
     return {
@@ -354,13 +653,13 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     return {
       verdict: "good",
       gauge: 55,
-      feedback: "Nicely softened — a question form does most of the work.",
+      feedback: "Nicely softened — clear, but no longer a bare command.",
       model: item.target,
     };
   return {
     verdict: "blunt",
     gauge: 15,
-    feedback: "Still reads as an order. Try a question form like: " + item.target,
+    feedback: "Still reads as an order. Try cushioning it, e.g. " + item.target,
     model: item.target,
   };
 }
@@ -1088,10 +1387,10 @@ export default function BrewFluent() {
                       gauge: o.gauge,
                       feedback:
                         o.verdict === "good"
-                          ? "Just right — softened, but the request is still unmistakable."
+                          ? "Just right — softened, but the point still lands."
                           : o.verdict === "blunt"
-                          ? "Reads as an order. A question form would do the softening for you."
-                          : "Over-steeped — stacked hedges bury the actual request.",
+                          ? "Reads as too blunt — soften the edge and it still gets through."
+                          : "Over-steeped — the stacked hedges bury the point.",
                     });
                   }}
                   style={{
