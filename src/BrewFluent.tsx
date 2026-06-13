@@ -637,7 +637,7 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
   // ... and declarative softeners (refusals/closers carry no question form):
   // hedged framing, appreciation, or an offered alternative/continuation.
   const declSoft =
-    /\bi think\b|i'?d rather|able to|happy to|let'?s|thank|appreciate|reach out|stay in touch|for next time|in the interest|hard stop/.test(
+    /\bi think\b|i'?d rather|able to|happy to|let'?s|thank|appreciate|reach out|stay in touch|for next time|in the interest|hard stop|differently|worry|what i mean|one thing|let you/.test(
       a
     );
   const soft = askSoft || declSoft;
@@ -1387,10 +1387,10 @@ export default function BrewFluent() {
                       gauge: o.gauge,
                       feedback:
                         o.verdict === "good"
-                          ? "Just right — softened, but the request is still unmistakable."
+                          ? "Just right — softened, but the point still lands."
                           : o.verdict === "blunt"
-                          ? "Reads as an order. A question form would do the softening for you."
-                          : "Over-steeped — stacked hedges bury the actual request.",
+                          ? "Reads as too blunt — soften the edge and it still gets through."
+                          : "Over-steeped — the stacked hedges bury the point.",
                     });
                   }}
                   style={{
