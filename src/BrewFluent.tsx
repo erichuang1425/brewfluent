@@ -483,19 +483,28 @@ const PACKS = [
 
 /* ----------------------- Dates & storage ----------------------- */
 
-// Format a Date as YYYY-MM-DD from *local* calendar components. Using
-// toISOString() would key the day off UTC, so a user east/west of UTC could
-// roll the quest/streak over at the wrong wall-clock moment (e.g. an Eastern
-// user completing a quest after 8pm being credited to the next day).
+/* Local-calendar YYYY-MM-DD (not UTC): a daily streak / spaced-review app
+   should roll over at the learner's midnight, and relative labels like
+   "tomorrow" must agree with their wall clock. Using toISOString() would key
+   the day off UTC, crediting an Eastern user's late-evening quest to the
+   next day. */
 const ymd = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const todayStr = () => ymd(new Date());
 const addDays = (dateStr, n) => {
   const d = new Date(dateStr + "T12:00:00");
   d.setDate(d.getDate() + n);
   return ymd(d);
+};
+/* Friendly relative phrasing for a due date (vs. a raw YYYY-MM-DD). */
+const relativeDue = (dueStr) => {
+  const t = todayStr();
+  if (dueStr <= t) return "today";
+  if (dueStr === addDays(t, 1)) return "tomorrow";
+  const days = Math.round(
+    (new Date(dueStr + "T12:00:00") - new Date(t + "T12:00:00")) / 86400000
+  );
+  return `in ${days} days`;
 };
 
 /* Normalized matching between Claude-reported hits and target strings */
@@ -506,6 +515,24 @@ const hitMatch = (hits, target) =>
     const b = norm(target);
     return a === b || a.includes(b) || b.includes(a);
   });
+/* Fragment-aware local detection: a target like "Could you … when you get a
+   chance?" lands if every substantive chunk shows up in the learner's own
+   words. Split on ellipses AND em-dashes so multi-clause full-sentence targets
+   ("I'm not able to lend money — it's a line I keep …") match clause-by-clause,
+   tolerant of connective variation but never matching on loose overlap. This is
+   a safety net under the NPC's self-reported hits — it keeps target detection
+   working when the model under-reports, without ever claiming a hit the learner
+   didn't make. */
+const fragMatch = (text, target) => {
+  const t = norm(text);
+  if (!t) return false;
+  const parts = target
+    .split(/[…—]/)
+    .map(norm)
+    .filter((p) => p.length >= 3);
+  if (!parts.length) return false;
+  return parts.every((p) => t.includes(p));
+};
 
 /* Daily rotation for the new-tab "Softener of the Day" widget */
 const DAILY_SOFTENERS = [
@@ -712,8 +739,10 @@ Respond ONLY with JSON, no markdown:
   } catch {}
   // Offline fallback — stay in character for the *selected* pack and let the
   // scene actually progress toward a resolution instead of repeating one opener
-  // until the turn cap. Replies, hits, and completion are all derived from the
-  // pack and the transcript.
+  // until the turn cap. Replies and completion are derived from the pack and
+  // transcript. We still flag `offline: true` so sendChat skips auto-banking:
+  // local hit detection can't reliably judge paraphrases, so we light chips
+  // leniently here but never schedule a "miss" we can't verify.
   const npcName = (pack.roleplay.npc.split(/[,(]/)[0] || "They").trim();
   const userTurns = transcript.filter((m) => m.role === "user");
   const lastUser = (userTurns[userTurns.length - 1] || {}).text || "";
@@ -732,7 +761,7 @@ Respond ONLY with JSON, no markdown:
     : userTurns.length <= 1
     ? `(${npcName} looks up.) Okay — tell me more about what you have in mind.`
     : `(${npcName} considers it.) Fair enough — what would you suggest we do?`;
-  return { reply, hits, coach: null, done };
+  return { reply, hits, coach: null, done, offline: true };
 }
 
 /* ----------------------- UI atoms ----------------------- */
@@ -857,6 +886,7 @@ export default function BrewFluent() {
   const [quest, setQuest] = useState({ drill: false, roleplay: false });
   const [questCelebrated, setQuestCelebrated] = useState(false);
   const [bank, setBank] = useState({}); // key `${packId}:${itemIdx}` → {packId,itemIdx,target,interval,due,misses}
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // review state
   const [reviewQueue, setReviewQueue] = useState([]);
@@ -874,6 +904,9 @@ export default function BrewFluent() {
   const [hits, setHits] = useState([]);
   const [rpDone, setRpDone] = useState(false);
   const chatEndRef = useRef(null);
+  // True once any turn this scene fell back offline — hit detection is then
+  // unreliable, so we don't auto-bank "misses" we can't actually verify.
+  const rpDegradedRef = useRef(false);
 
   /* ---------- hydrate from storage ---------- */
   useEffect(() => {
@@ -927,6 +960,11 @@ export default function BrewFluent() {
     const id = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(id);
   }, []);
+
+  // Never leave the destructive reset "armed" once the user navigates away.
+  useEffect(() => {
+    if (screen !== "home" && confirmReset) setConfirmReset(false);
+  }, [screen]); // eslint-disable-line
 
   /* ---------- mistake bank ---------- */
   const dueItems = Object.values(bank).filter((e) => e.due <= todayStr());
@@ -1019,16 +1057,41 @@ export default function BrewFluent() {
     return t.slice(0, 3);
   };
 
+  /* Targets the learner carried in but never deployed live are exactly the
+     transfer gap this product targets — bank them for spaced review so the
+     recap's "banked for spaced review" promise is real. Called the moment the
+     scene resolves (see sendChat), so it can't be skipped by leaving via the
+     header, a reload, or closing the tab. Takes the final hit set explicitly
+     since it runs before the hits state has flushed. */
+  const bankRoleplayMisses = (finalHits = hits) => {
+    const unused = transferTargets().filter((t) => !hitMatch(finalHits, t));
+    if (!unused.length) return;
+    setBank((prev) => {
+      const next = { ...prev };
+      for (const target of unused) {
+        const itemIdx = pack.items.findIndex((it) => it.target === target);
+        if (itemIdx < 0) continue;
+        const key = `${pack.id}:${itemIdx}`;
+        const e = next[key] || { packId: pack.id, itemIdx, target, interval: 1, misses: 0 };
+        next[key] = { ...e, misses: e.misses + 1, interval: 1, due: todayStr() };
+      }
+      saveStore("bf:mistakes", next);
+      return next;
+    });
+  };
+
   /* ---------- roleplay flow ---------- */
   const startRoleplay = async () => {
     setChat([]);
     setHits([]);
     setRpDone(false);
+    rpDegradedRef.current = false;
     setScreen("roleplay");
     setChatBusy(true);
     const first = await roleplayTurn(pack, transferTargets(), [
       { role: "user", text: "(The learner approaches. Open the scene with your first line.)" },
     ]);
+    if (first.offline) rpDegradedRef.current = true;
     setChat([{ role: "npc", text: first.reply }]);
     setChatBusy(false);
   };
@@ -1041,7 +1104,14 @@ export default function BrewFluent() {
     setChatInput("");
     setChatBusy(true);
     const out = await roleplayTurn(pack, transferTargets(), newChat);
-    setHits((h) => [...new Set([...h, ...(out.hits || [])])]);
+    if (out.offline) rpDegradedRef.current = true;
+    // Merge the NPC's reported hits with a local fragment match on the
+    // learner's own message, so detection survives offline fallbacks and
+    // under-reporting. Push the target string itself so downstream hitMatch
+    // resolves cleanly.
+    const localHits = transferTargets().filter((t) => fragMatch(text, t));
+    const mergedHits = [...new Set([...hits, ...(out.hits || []), ...localHits])];
+    setHits(mergedHits);
     setChat((c) => [
       ...c,
       { role: "npc", text: out.reply, coach: out.coach && out.coach !== "null" ? out.coach : null },
@@ -1050,6 +1120,11 @@ export default function BrewFluent() {
     const userTurns = newChat.filter((m) => m.role === "user").length;
     if (out.done || userTurns >= 6) {
       setRpDone(true);
+      // Bank unused targets here, when the scene resolves — not on recap
+      // navigation, which a header tap / reload / tab close would skip. Skip it
+      // when the scene ran degraded: offline hit detection can't judge
+      // paraphrases, so banking would punish softeners the learner may have used.
+      if (!rpDegradedRef.current) bankRoleplayMisses(mergedHits);
       const newQuest = { ...quest, roleplay: true };
       setQuest(newQuest);
       persistState({ quest: newQuest });
@@ -1064,6 +1139,7 @@ export default function BrewFluent() {
     setQuest({ drill: false, roleplay: false });
     setQuestCelebrated(false);
     setBank({});
+    setConfirmReset(false);
   };
 
   /* ---------- shell ---------- */
@@ -1174,10 +1250,13 @@ export default function BrewFluent() {
             </>
           ) : (
             <p style={{ fontSize: 14, color: T.inkSoft, margin: "8px 0 0" }}>
-              All steeped. Next review:{" "}
-              {Object.values(bank)
-                .map((e) => e.due)
-                .sort()[0]}
+              All steeped. Next review{" "}
+              {relativeDue(
+                Object.values(bank)
+                  .map((e) => e.due)
+                  .sort()[0]
+              )}
+              .
             </p>
           )}
         </div>
@@ -1225,22 +1304,41 @@ export default function BrewFluent() {
           Preview: new-tab widget
         </Btn>
 
-        <button
-          onClick={resetProgress}
-          style={{
-            background: "none",
-            border: "none",
-            color: T.inkSoft,
-            fontFamily: "'Karla', sans-serif",
-            fontSize: 12.5,
-            textDecoration: "underline",
-            cursor: "pointer",
-            marginTop: 16,
-            padding: 4,
-          }}
-        >
-          Reset all progress
-        </button>
+        <div style={{ marginTop: 16 }}>
+          <button
+            onClick={() => (confirmReset ? resetProgress() : setConfirmReset(true))}
+            style={{
+              background: "none",
+              border: "none",
+              color: confirmReset ? T.bad : T.inkSoft,
+              fontFamily: "'Karla', sans-serif",
+              fontSize: 12.5,
+              fontWeight: confirmReset ? 700 : 400,
+              textDecoration: "underline",
+              cursor: "pointer",
+              padding: 4,
+            }}
+          >
+            {confirmReset ? "Tap again to wipe streak & bank" : "Reset all progress"}
+          </button>
+          {confirmReset && (
+            <button
+              onClick={() => setConfirmReset(false)}
+              style={{
+                background: "none",
+                border: "none",
+                color: T.inkSoft,
+                fontFamily: "'Karla', sans-serif",
+                fontSize: 12.5,
+                cursor: "pointer",
+                padding: 4,
+                marginLeft: 6,
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </>
     );
 
@@ -1791,6 +1889,12 @@ export default function BrewFluent() {
   if (screen === "recap") {
     const targets = transferTargets();
     const used = targets.filter((t) => hitMatch(hits, t));
+    // Only claim "banked" for targets actually in the bank (a degraded scene
+    // skips banking) — keep the recap honest about what will come back.
+    const isBanked = (t) => {
+      const i = pack.items.findIndex((it) => it.target === t);
+      return i >= 0 && !!bank[`${pack.id}:${i}`];
+    };
     return shell(
       <>
         {header}
@@ -1804,7 +1908,7 @@ export default function BrewFluent() {
           {targets.map((t) => (
             <div key={t} style={{ fontSize: 15, lineHeight: 2 }}>
               {used.includes(t) ? "✓" : "○"} {t}
-              {!used.includes(t) && (
+              {!used.includes(t) && isBanked(t) && (
                 <span style={{ color: T.copper, fontSize: 13 }}> — banked for spaced review</span>
               )}
             </div>
