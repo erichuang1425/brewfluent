@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 
 /* ============================================================
-   BrewFluent — MVP Prototype (solo rescope, months 0–6 scope)
-   - 2 drill packs: Requests, Disagreement
-   - Formats: tap-to-choose + rewrite (Claude-scored)
-   - Streak + daily quest (in-memory for prototype)
-   - Drill→roleplay transfer: missed softeners injected into
-     a live roleplay with a Claude-played NPC
-   Signature element: the Steep Gauge — softness is a brew;
-   under-brewed = blunt, over-steeped = too hedgy.
+   BrewFluent — MVP Prototype v2 (solo rescope, months 0–6)
+   New in v2:
+   - Real persistence via window.storage (streak, daily quest,
+     mistake bank survive reloads)
+   - Spaced mistake bank: missed softeners are scheduled for
+     review; correct reviews double the interval, misses reset it
    ============================================================ */
 
 const T = {
@@ -207,6 +205,49 @@ const PACKS = [
   },
 ];
 
+/* ----------------------- Dates & storage ----------------------- */
+
+// Format a Date as YYYY-MM-DD from *local* calendar components. Using
+// toISOString() would key the day off UTC, so a user east/west of UTC could
+// roll the quest/streak over at the wrong wall-clock moment (e.g. an Eastern
+// user completing a quest after 8pm being credited to the next day).
+const ymd = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+const todayStr = () => ymd(new Date());
+const addDays = (dateStr, n) => {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+};
+
+const hasStorage = typeof window !== "undefined" && window.storage;
+
+async function loadStore(key, fallback) {
+  if (!hasStorage) return fallback;
+  try {
+    const r = await window.storage.get(key);
+    return r ? JSON.parse(r.value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+async function saveStore(key, val) {
+  if (!hasStorage) return;
+  try {
+    await window.storage.set(key, JSON.stringify(val));
+  } catch (e) {
+    console.error("storage save failed", e);
+  }
+}
+async function wipeStore(key) {
+  if (!hasStorage) return;
+  try {
+    await window.storage.delete(key);
+  } catch {}
+}
+
 /* ----------------------- Claude helpers ----------------------- */
 
 async function claude(userContent) {
@@ -220,11 +261,10 @@ async function claude(userContent) {
     }),
   });
   const data = await res.json();
-  const text = (data.content || [])
+  return (data.content || [])
     .filter((b) => b.type === "text")
     .map((b) => b.text)
     .join("\n");
-  return text;
 }
 
 function parseJSON(text) {
@@ -260,7 +300,6 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     const parsed = parseJSON(await claude(prompt));
     if (parsed && parsed.verdict) return parsed;
   } catch {}
-  // Offline fallback heuristic
   const a = answer.toLowerCase();
   // Does the rewrite echo the supplied target pattern? Strip the ellipsis
   // placeholder, split on its clauses, and test each lead phrase against the
@@ -445,7 +484,6 @@ function Chip({ children, hot }) {
         background: hot ? T.leaf : T.mist,
         color: hot ? T.surface : T.leafDeep,
         margin: "0 6px 6px 0",
-        textDecoration: hot ? "none" : "none",
       }}
     >
       {children}
@@ -457,16 +495,26 @@ function Chip({ children, hot }) {
 
 export default function BrewFluent() {
   const [screen, setScreen] = useState("home");
+  const [hydrated, setHydrated] = useState(false);
   const [pack, setPack] = useState(null);
   const [idx, setIdx] = useState(0);
-  const [feedback, setFeedback] = useState(null); // {verdict,gauge,feedback,model}
+  const [feedback, setFeedback] = useState(null);
   const [rewriteText, setRewriteText] = useState("");
   const [scoring, setScoring] = useState(false);
-  const [missed, setMissed] = useState([]); // softener targets to transfer
+  const [missed, setMissed] = useState([]);
   const [nailed, setNailed] = useState([]);
-  const [streak, setStreak] = useState(3);
+
+  // persisted
+  const [streak, setStreak] = useState(0);
+  const [lastDone, setLastDone] = useState(null);
   const [quest, setQuest] = useState({ drill: false, roleplay: false });
   const [questCelebrated, setQuestCelebrated] = useState(false);
+  const [bank, setBank] = useState({}); // key `${packId}:${itemIdx}` → {packId,itemIdx,target,interval,due,misses}
+
+  // review state
+  const [reviewQueue, setReviewQueue] = useState([]);
+  const [reviewIdx, setReviewIdx] = useState(0);
+  const [reviewDoneCount, setReviewDoneCount] = useState(0);
 
   // roleplay state
   const [chat, setChat] = useState([]);
@@ -476,17 +524,113 @@ export default function BrewFluent() {
   const [rpDone, setRpDone] = useState(false);
   const chatEndRef = useRef(null);
 
+  /* ---------- hydrate from storage ---------- */
+  useEffect(() => {
+    (async () => {
+      const s = await loadStore("bf:state", null);
+      const b = await loadStore("bf:mistakes", {});
+      const t = todayStr();
+      if (s) {
+        setStreak(s.streak || 0);
+        setLastDone(s.lastCompletedDate || null);
+        if (s.quest && s.quest.date === t) {
+          setQuest({ drill: !!s.quest.drill, roleplay: !!s.quest.roleplay });
+          setQuestCelebrated(!!s.quest.drill && !!s.quest.roleplay);
+        }
+      }
+      setBank(b || {});
+      setHydrated(true);
+    })();
+  }, []);
+
+  /* ---------- persist state ---------- */
+  const persistState = (next = {}) => {
+    const payload = {
+      streak: next.streak ?? streak,
+      lastCompletedDate: next.lastDone ?? lastDone,
+      quest: { ...(next.quest ?? quest), date: todayStr() },
+    };
+    saveStore("bf:state", payload);
+  };
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (quest.drill && quest.roleplay && !questCelebrated) {
+      const t = todayStr();
+      let newStreak;
+      if (lastDone === t) newStreak = streak;
+      else if (lastDone === addDays(t, -1)) newStreak = streak + 1;
+      else newStreak = 1;
+      setStreak(newStreak);
+      setLastDone(t);
+      setQuestCelebrated(true);
+      persistState({ streak: newStreak, lastDone: t, quest });
+    }
+  }, [quest, questCelebrated, hydrated]); // eslint-disable-line
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, chatBusy]);
 
-  useEffect(() => {
-    if (quest.drill && quest.roleplay && !questCelebrated) {
-      setStreak((s) => s + 1);
-      setQuestCelebrated(true);
-    }
-  }, [quest, questCelebrated]);
+  /* ---------- mistake bank ---------- */
+  const dueItems = Object.values(bank).filter((e) => e.due <= todayStr());
 
+  const recordResult = (item, verdict) => {
+    if (verdict === "good") {
+      setNailed((n) => [...new Set([...n, item.target])]);
+    } else {
+      setMissed((m) => [...new Set([...m, item.target])]);
+      const key = `${pack.id}:${idx}`;
+      setBank((prev) => {
+        const e = prev[key] || {
+          packId: pack.id,
+          itemIdx: idx,
+          target: item.target,
+          interval: 1,
+          misses: 0,
+        };
+        const next = {
+          ...prev,
+          [key]: { ...e, misses: e.misses + 1, interval: 1, due: todayStr() },
+        };
+        saveStore("bf:mistakes", next);
+        return next;
+      });
+    }
+  };
+
+  const reviewSourceFor = (entry) => {
+    const p = PACKS.find((x) => x.id === entry.packId);
+    const item = p.items[entry.itemIdx];
+    const blunt = item.type === "rewrite" ? item.blunt : item.options.find((o) => o.verdict === "blunt").text;
+    return { packName: p.name, prompt: item.prompt, blunt, target: entry.target, hint: item.hint };
+  };
+
+  const startReview = () => {
+    setReviewQueue(dueItems.map((e) => `${e.packId}:${e.itemIdx}`));
+    setReviewIdx(0);
+    setReviewDoneCount(0);
+    setFeedback(null);
+    setRewriteText("");
+    setScreen("review");
+  };
+
+  const gradeReview = (key, verdict) => {
+    setBank((prev) => {
+      const e = prev[key];
+      if (!e) return prev;
+      const t = todayStr();
+      const updated =
+        verdict === "good"
+          ? { ...e, interval: e.interval * 2, due: addDays(t, e.interval * 2) }
+          : { ...e, interval: 1, misses: e.misses + 1, due: addDays(t, 1) };
+      const next = { ...prev, [key]: updated };
+      saveStore("bf:mistakes", next);
+      return next;
+    });
+  };
+
+  /* ---------- drill flow ---------- */
   const startPack = (p) => {
     setPack(p);
     setIdx(0);
@@ -497,44 +641,40 @@ export default function BrewFluent() {
     setScreen("drill");
   };
 
-  const recordResult = (item, verdict) => {
-    if (verdict === "good") setNailed((n) => [...new Set([...n, item.target])]);
-    else setMissed((m) => [...new Set([...m, item.target])]);
-  };
-
   const next = () => {
     setFeedback(null);
     setRewriteText("");
     if (idx + 1 < pack.items.length) setIdx(idx + 1);
     else {
-      setQuest((q) => ({ ...q, drill: true }));
+      const newQuest = { ...quest, drill: true };
+      setQuest(newQuest);
+      persistState({ quest: newQuest });
       setScreen("drillDone");
     }
   };
 
-  const startRoleplay = async () => {
-    setChat([]);
-    setHits([]);
-    setRpDone(false);
-    setScreen("roleplay");
-    setChatBusy(true);
-    const targets = transferTargets();
-    const first = await roleplayTurn(pack, targets, [
-      { role: "user", text: "(The learner approaches. Open the scene with your first line.)" },
-    ]);
-    setChat([{ role: "npc", text: first.reply }]);
-    setChatBusy(false);
-  };
-
   const transferTargets = () => {
     const t = [...missed];
-    // always give at least two targets so the roleplay has teeth
     for (const n of nailed) {
       if (t.length >= 3) break;
       if (!t.includes(n)) t.push(n);
     }
     if (t.length === 0) t.push(pack.items[0].target);
     return t.slice(0, 3);
+  };
+
+  /* ---------- roleplay flow ---------- */
+  const startRoleplay = async () => {
+    setChat([]);
+    setHits([]);
+    setRpDone(false);
+    setScreen("roleplay");
+    setChatBusy(true);
+    const first = await roleplayTurn(pack, transferTargets(), [
+      { role: "user", text: "(The learner approaches. Open the scene with your first line.)" },
+    ]);
+    setChat([{ role: "npc", text: first.reply }]);
+    setChatBusy(false);
   };
 
   const sendChat = async () => {
@@ -554,12 +694,23 @@ export default function BrewFluent() {
     const userTurns = newChat.filter((m) => m.role === "user").length;
     if (out.done || userTurns >= 6) {
       setRpDone(true);
-      setQuest((q) => ({ ...q, roleplay: true }));
+      const newQuest = { ...quest, roleplay: true };
+      setQuest(newQuest);
+      persistState({ quest: newQuest });
     }
   };
 
-  /* ---------- screens ---------- */
+  const resetProgress = async () => {
+    await wipeStore("bf:state");
+    await wipeStore("bf:mistakes");
+    setStreak(0);
+    setLastDone(null);
+    setQuest({ drill: false, roleplay: false });
+    setQuestCelebrated(false);
+    setBank({});
+  };
 
+  /* ---------- shell ---------- */
   const shell = (children) => (
     <div
       style={{
@@ -602,6 +753,15 @@ export default function BrewFluent() {
     </div>
   );
 
+  if (!hydrated)
+    return shell(
+      <>
+        {header}
+        <p style={{ color: T.inkSoft, fontSize: 14 }}>Warming the kettle…</p>
+      </>
+    );
+
+  /* ---------- HOME ---------- */
   if (screen === "home")
     return shell(
       <>
@@ -616,7 +776,7 @@ export default function BrewFluent() {
             border: `1.5px solid ${T.line}`,
             borderRadius: 16,
             padding: "16px 18px",
-            marginBottom: 22,
+            marginBottom: 14,
           }}
         >
           <div style={{ fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 700 }}>
@@ -628,8 +788,41 @@ export default function BrewFluent() {
           </div>
           {questCelebrated && (
             <div style={{ marginTop: 10, color: T.leaf, fontWeight: 700, fontSize: 14 }}>
-              Quest complete — streak extended to {streak}.
+              Quest complete — streak at {streak}.
             </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            background: dueItems.length ? T.mist : T.surface,
+            border: `1.5px solid ${dueItems.length ? T.leaf : T.line}`,
+            borderRadius: 16,
+            padding: "16px 18px",
+            marginBottom: 22,
+          }}
+        >
+          <div style={{ fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 700 }}>
+            Mistake bank
+          </div>
+          {Object.keys(bank).length === 0 ? (
+            <p style={{ fontSize: 14, color: T.inkSoft, margin: "8px 0 0" }}>
+              Empty for now. Missed drills land here for spaced review.
+            </p>
+          ) : dueItems.length ? (
+            <>
+              <p style={{ fontSize: 14.5, margin: "8px 0 12px" }}>
+                <strong>{dueItems.length}</strong> softener{dueItems.length === 1 ? "" : "s"} ready to re-steep.
+              </p>
+              <Btn onClick={startReview}>Review now</Btn>
+            </>
+          ) : (
+            <p style={{ fontSize: 14, color: T.inkSoft, margin: "8px 0 0" }}>
+              All steeped. Next review:{" "}
+              {Object.values(bank)
+                .map((e) => e.due)
+                .sort()[0]}
+            </p>
           )}
         </div>
 
@@ -662,9 +855,27 @@ export default function BrewFluent() {
             </div>
           </button>
         ))}
+
+        <button
+          onClick={resetProgress}
+          style={{
+            background: "none",
+            border: "none",
+            color: T.inkSoft,
+            fontFamily: "'Karla', sans-serif",
+            fontSize: 12.5,
+            textDecoration: "underline",
+            cursor: "pointer",
+            marginTop: 16,
+            padding: 4,
+          }}
+        >
+          Reset all progress
+        </button>
       </>
     );
 
+  /* ---------- DRILL ---------- */
   if (screen === "drill") {
     const item = pack.items[idx];
     return shell(
@@ -823,6 +1034,125 @@ export default function BrewFluent() {
     );
   }
 
+  /* ---------- REVIEW (spaced mistake bank) ---------- */
+  if (screen === "review") {
+    if (reviewIdx >= reviewQueue.length)
+      return shell(
+        <>
+          {header}
+          <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 24, fontWeight: 650, margin: "26px 0 8px" }}>
+            Bank reviewed.
+          </h2>
+          <p style={{ color: T.inkSoft, fontSize: 15, lineHeight: 1.55 }}>
+            {reviewDoneCount} of {reviewQueue.length} re-steeped successfully. Correct reviews come back at
+            double the interval; misses return tomorrow.
+          </p>
+          <Btn onClick={() => setScreen("home")} style={{ marginTop: 16 }}>
+            Back home
+          </Btn>
+        </>
+      );
+
+    const key = reviewQueue[reviewIdx];
+    const entry = bank[key];
+    const src = reviewSourceFor(entry);
+    return shell(
+      <>
+        {header}
+        <div style={{ fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 700, marginTop: 14 }}>
+          Mistake bank · {reviewIdx + 1} of {reviewQueue.length} · {src.packName}
+        </div>
+        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 650, lineHeight: 1.35, margin: "8px 0 6px" }}>
+          {src.prompt}
+        </h2>
+        <p style={{ fontSize: 13, color: T.copper, fontWeight: 700, margin: "0 0 14px" }}>
+          Missed {entry.misses}× · target: {src.target}
+        </p>
+        <div
+          style={{
+            background: T.surface,
+            border: `1.5px solid ${T.line}`,
+            borderRadius: 14,
+            padding: "14px 16px",
+            fontSize: 16,
+            fontStyle: "italic",
+            marginBottom: 12,
+          }}
+        >
+          “{src.blunt}”
+        </div>
+        {!feedback ? (
+          <>
+            <textarea
+              value={rewriteText}
+              onChange={(e) => setRewriteText(e.target.value)}
+              placeholder="Rewrite it softer — from memory this time…"
+              rows={3}
+              style={{
+                width: "100%",
+                fontFamily: "'Karla', sans-serif",
+                fontSize: 15.5,
+                padding: "13px 15px",
+                borderRadius: 14,
+                border: `1.5px solid ${T.line}`,
+                background: T.surface,
+                color: T.ink,
+                resize: "vertical",
+                marginBottom: 12,
+              }}
+            />
+            <Btn
+              disabled={!rewriteText.trim() || scoring}
+              onClick={async () => {
+                setScoring(true);
+                const r = await scoreRewrite({ blunt: src.blunt, target: src.target }, rewriteText.trim());
+                gradeReview(key, r.verdict);
+                if (r.verdict === "good") setReviewDoneCount((c) => c + 1);
+                setFeedback(r);
+                setScoring(false);
+              }}
+            >
+              {scoring ? "Steeping…" : "Check my brew"}
+            </Btn>
+          </>
+        ) : (
+          <div
+            style={{
+              background: T.surface,
+              border: `1.5px solid ${T.line}`,
+              borderRadius: 16,
+              padding: "16px 18px",
+            }}
+          >
+            <SteepGauge gauge={feedback.gauge} verdict={feedback.verdict} />
+            <p style={{ fontSize: 14.5, lineHeight: 1.5, margin: "14px 0 6px" }}>{feedback.feedback}</p>
+            {feedback.model && feedback.verdict !== "good" && (
+              <p style={{ fontSize: 14, color: T.inkSoft, margin: "6px 0 0" }}>
+                e.g. <em>“{feedback.model}”</em>
+              </p>
+            )}
+            <p style={{ fontSize: 13, color: T.inkSoft, margin: "10px 0 0" }}>
+              {feedback.verdict === "good"
+                ? `Next review in ${entry.interval} day${entry.interval === 1 ? "" : "s"}.`
+                : "Back tomorrow."}
+            </p>
+            <Btn
+              onClick={() => {
+                setFeedback(null);
+                setRewriteText("");
+                setReviewIdx((i) => i + 1);
+              }}
+              style={{ marginTop: 16 }}
+            >
+              {reviewIdx + 1 < reviewQueue.length ? "Next review" : "Finish reviews"}
+            </Btn>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /* ---------- DRILL DONE ---------- */
   if (screen === "drillDone")
     return shell(
       <>
@@ -843,7 +1173,7 @@ export default function BrewFluent() {
         </div>
         <p style={{ color: T.inkSoft, fontSize: 13.5, lineHeight: 1.5 }}>
           The scene partner knows your weak spots and will create openings for them. Use each pattern at
-          least once.
+          least once. Misses are also banked for spaced review.
         </p>
         <div
           style={{
@@ -868,6 +1198,7 @@ export default function BrewFluent() {
       </>
     );
 
+  /* ---------- ROLEPLAY ---------- */
   if (screen === "roleplay") {
     const targets = transferTargets();
     return shell(
@@ -875,7 +1206,14 @@ export default function BrewFluent() {
         {header}
         <div style={{ margin: "10px 0 8px" }}>
           {targets.map((t) => (
-            <Chip key={t} hot={hits.some((h) => h.toLowerCase().includes(t.toLowerCase().slice(0, 8)) || t.toLowerCase().includes(h.toLowerCase().slice(0, 8)))}>
+            <Chip
+              key={t}
+              hot={hits.some(
+                (h) =>
+                  h.toLowerCase().includes(t.toLowerCase().slice(0, 8)) ||
+                  t.toLowerCase().includes(h.toLowerCase().slice(0, 8))
+              )}
+            >
               {t}
             </Chip>
           ))}
@@ -947,6 +1285,7 @@ export default function BrewFluent() {
     );
   }
 
+  /* ---------- RECAP ---------- */
   if (screen === "recap") {
     const targets = transferTargets();
     const used = targets.filter((t) =>
@@ -970,7 +1309,7 @@ export default function BrewFluent() {
             <div key={t} style={{ fontSize: 15, lineHeight: 2 }}>
               {used.includes(t) ? "✓" : "○"} {t}
               {!used.includes(t) && (
-                <span style={{ color: T.copper, fontSize: 13 }}> — back to the drill bank</span>
+                <span style={{ color: T.copper, fontSize: 13 }}> — banked for spaced review</span>
               )}
             </div>
           ))}
