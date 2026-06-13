@@ -632,7 +632,15 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     if (parsed && parsed.verdict) return parsed;
   } catch {}
   const a = answer.toLowerCase();
-  const soft = /could|would|mind|possible|wonder|chance|please|\?/.test(a);
+  // Question-form request softeners ...
+  const askSoft = /could|would|mind|possible|wonder|chance|please|\?/.test(a);
+  // ... and declarative softeners (refusals/closers carry no question form):
+  // hedged framing, appreciation, or an offered alternative/continuation.
+  const declSoft =
+    /\bi think\b|i'?d rather|able to|happy to|let'?s|thank|appreciate|reach out|stay in touch|for next time|in the interest|hard stop/.test(
+      a
+    );
+  const soft = askSoft || declSoft;
   const over = (a.match(/sorry|maybe|possibly|perhaps|bother|tiny|just/g) || []).length >= 3;
   if (over)
     return {
@@ -645,13 +653,13 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
     return {
       verdict: "good",
       gauge: 55,
-      feedback: "Nicely softened — a question form does most of the work.",
+      feedback: "Nicely softened — clear, but no longer a bare command.",
       model: item.target,
     };
   return {
     verdict: "blunt",
     gauge: 15,
-    feedback: "Still reads as an order. Try a question form like: " + item.target,
+    feedback: "Still reads as an order. Try cushioning it, e.g. " + item.target,
     model: item.target,
   };
 }
