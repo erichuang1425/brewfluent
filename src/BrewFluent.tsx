@@ -262,7 +262,18 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
   } catch {}
   // Offline fallback heuristic
   const a = answer.toLowerCase();
-  const soft = /could|would|mind|possible|wonder|chance|please|\?/.test(a);
+  // Does the rewrite echo the supplied target pattern? Strip the ellipsis
+  // placeholder, split on its clauses, and test each lead phrase against the
+  // answer. This makes the fallback work for every pack (e.g. the Disagreement
+  // softeners "My worry with that is …", "I remember it slightly differently …")
+  // instead of only the request-style words below.
+  const targetFrags = item.target
+    .toLowerCase()
+    .split(/…|\.\.\.|—|-/)
+    .map((s) => s.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim())
+    .filter((s) => s.length >= 4);
+  const echoesTarget = targetFrags.some((f) => a.includes(f));
+  const soft = echoesTarget || /could|would|mind|possible|wonder|chance|please|\?/.test(a);
   const over = (a.match(/sorry|maybe|possibly|perhaps|bother|tiny|just/g) || []).length >= 3;
   if (over)
     return {
@@ -313,12 +324,29 @@ Respond ONLY with JSON, no markdown:
     const parsed = parseJSON(await claude(prompt));
     if (parsed && parsed.reply) return parsed;
   } catch {}
-  return {
-    reply: "(Sam looks up from their screen.) Okay — tell me more about what you need.",
-    hits: [],
-    coach: null,
-    done: false,
-  };
+  // Offline fallback — stay in character for the *selected* pack and let the
+  // scene actually progress toward a resolution instead of repeating one opener
+  // until the turn cap. Replies, hits, and completion are all derived from the
+  // pack and the transcript.
+  const npcName = (pack.roleplay.npc.split(/[,(]/)[0] || "They").trim();
+  const userTurns = transcript.filter((m) => m.role === "user");
+  const lastUser = (userTurns[userTurns.length - 1] || {}).text || "";
+  const lu = lastUser.toLowerCase();
+  const hits = targets.filter((t) =>
+    t
+      .toLowerCase()
+      .split(/…|\.\.\.|—|-/)
+      .map((s) => s.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim())
+      .filter((s) => s.length >= 4)
+      .some((f) => lu.includes(f))
+  );
+  const done = userTurns.length >= 3;
+  const reply = done
+    ? `(${npcName} nods.) Okay — that works for me. Let's go with that.`
+    : userTurns.length <= 1
+    ? `(${npcName} looks up.) Okay — tell me more about what you have in mind.`
+    : `(${npcName} considers it.) Fair enough — what would you suggest we do?`;
+  return { reply, hits, coach: null, done };
 }
 
 /* ----------------------- UI atoms ----------------------- */
