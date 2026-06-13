@@ -514,15 +514,18 @@ const hitMatch = (hits, target) =>
     return a === b || a.includes(b) || b.includes(a);
   });
 /* Fragment-aware local detection: a target like "Could you … when you get a
-   chance?" lands if every non-ellipsis chunk shows up in the learner's own
-   words. This is a safety net under the NPC's self-reported hits — it keeps
-   target detection working when the model under-reports or the call falls
-   back offline (hits: []), so chips and recap still reflect what was said. */
+   chance?" lands if every substantive chunk shows up in the learner's own
+   words. Split on ellipses AND em-dashes so multi-clause full-sentence targets
+   ("I'm not able to lend money — it's a line I keep …") match clause-by-clause,
+   tolerant of connective variation but never matching on loose overlap. This is
+   a safety net under the NPC's self-reported hits — it keeps target detection
+   working when the model under-reports, without ever claiming a hit the learner
+   didn't make. */
 const fragMatch = (text, target) => {
   const t = norm(text);
   if (!t) return false;
   const parts = target
-    .split("…")
+    .split(/[…—]/)
     .map(norm)
     .filter((p) => p.length >= 3);
   if (!parts.length) return false;
@@ -726,6 +729,7 @@ Respond ONLY with JSON, no markdown:
     hits: [],
     coach: null,
     done: false,
+    offline: true, // model unavailable — hit detection this turn is unreliable
   };
 }
 
@@ -869,6 +873,9 @@ export default function BrewFluent() {
   const [hits, setHits] = useState([]);
   const [rpDone, setRpDone] = useState(false);
   const chatEndRef = useRef(null);
+  // True once any turn this scene fell back offline — hit detection is then
+  // unreliable, so we don't auto-bank "misses" we can't actually verify.
+  const rpDegradedRef = useRef(false);
 
   /* ---------- hydrate from storage ---------- */
   useEffect(() => {
@@ -1047,11 +1054,13 @@ export default function BrewFluent() {
     setChat([]);
     setHits([]);
     setRpDone(false);
+    rpDegradedRef.current = false;
     setScreen("roleplay");
     setChatBusy(true);
     const first = await roleplayTurn(pack, transferTargets(), [
       { role: "user", text: "(The learner approaches. Open the scene with your first line.)" },
     ]);
+    if (first.offline) rpDegradedRef.current = true;
     setChat([{ role: "npc", text: first.reply }]);
     setChatBusy(false);
   };
@@ -1064,6 +1073,7 @@ export default function BrewFluent() {
     setChatInput("");
     setChatBusy(true);
     const out = await roleplayTurn(pack, transferTargets(), newChat);
+    if (out.offline) rpDegradedRef.current = true;
     // Merge the NPC's reported hits with a local fragment match on the
     // learner's own message, so detection survives offline fallbacks and
     // under-reporting. Push the target string itself so downstream hitMatch
@@ -1080,8 +1090,10 @@ export default function BrewFluent() {
     if (out.done || userTurns >= 6) {
       setRpDone(true);
       // Bank unused targets here, when the scene resolves — not on recap
-      // navigation, which a header tap / reload / tab close would skip.
-      bankRoleplayMisses(mergedHits);
+      // navigation, which a header tap / reload / tab close would skip. Skip it
+      // when the scene ran degraded: offline hit detection can't judge
+      // paraphrases, so banking would punish softeners the learner may have used.
+      if (!rpDegradedRef.current) bankRoleplayMisses(mergedHits);
       const newQuest = { ...quest, roleplay: true };
       setQuest(newQuest);
       persistState({ quest: newQuest });
@@ -1839,6 +1851,12 @@ export default function BrewFluent() {
   if (screen === "recap") {
     const targets = transferTargets();
     const used = targets.filter((t) => hitMatch(hits, t));
+    // Only claim "banked" for targets actually in the bank (a degraded scene
+    // skips banking) — keep the recap honest about what will come back.
+    const isBanked = (t) => {
+      const i = pack.items.findIndex((it) => it.target === t);
+      return i >= 0 && !!bank[`${pack.id}:${i}`];
+    };
     return shell(
       <>
         {header}
@@ -1852,7 +1870,7 @@ export default function BrewFluent() {
           {targets.map((t) => (
             <div key={t} style={{ fontSize: 15, lineHeight: 2 }}>
               {used.includes(t) ? "✓" : "○"} {t}
-              {!used.includes(t) && (
+              {!used.includes(t) && isBanked(t) && (
                 <span style={{ color: T.copper, fontSize: 13 }}> — banked for spaced review</span>
               )}
             </div>
