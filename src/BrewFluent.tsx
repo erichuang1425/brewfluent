@@ -1016,9 +1016,12 @@ export default function BrewFluent() {
 
   /* Targets the learner carried in but never deployed live are exactly the
      transfer gap this product targets — bank them for spaced review so the
-     recap's "banked for spaced review" promise is real. */
-  const bankRoleplayMisses = () => {
-    const unused = transferTargets().filter((t) => !hitMatch(hits, t));
+     recap's "banked for spaced review" promise is real. Called the moment the
+     scene resolves (see sendChat), so it can't be skipped by leaving via the
+     header, a reload, or closing the tab. Takes the final hit set explicitly
+     since it runs before the hits state has flushed. */
+  const bankRoleplayMisses = (finalHits = hits) => {
+    const unused = transferTargets().filter((t) => !hitMatch(finalHits, t));
     if (!unused.length) return;
     setBank((prev) => {
       const next = { ...prev };
@@ -1061,7 +1064,8 @@ export default function BrewFluent() {
     // under-reporting. Push the target string itself so downstream hitMatch
     // resolves cleanly.
     const localHits = transferTargets().filter((t) => fragMatch(text, t));
-    setHits((h) => [...new Set([...h, ...(out.hits || []), ...localHits])]);
+    const mergedHits = [...new Set([...hits, ...(out.hits || []), ...localHits])];
+    setHits(mergedHits);
     setChat((c) => [
       ...c,
       { role: "npc", text: out.reply, coach: out.coach && out.coach !== "null" ? out.coach : null },
@@ -1070,6 +1074,9 @@ export default function BrewFluent() {
     const userTurns = newChat.filter((m) => m.role === "user").length;
     if (out.done || userTurns >= 6) {
       setRpDone(true);
+      // Bank unused targets here, when the scene resolves — not on recap
+      // navigation, which a header tap / reload / tab close would skip.
+      bankRoleplayMisses(mergedHits);
       const newQuest = { ...quest, roleplay: true };
       setQuest(newQuest);
       persistState({ quest: newQuest });
@@ -1817,14 +1824,7 @@ export default function BrewFluent() {
             </Btn>
           </div>
         ) : (
-          <Btn
-            onClick={() => {
-              bankRoleplayMisses();
-              setScreen("recap");
-            }}
-          >
-            See your recap
-          </Btn>
+          <Btn onClick={() => setScreen("recap")}>See your recap</Btn>
         )}
       </>
     );
