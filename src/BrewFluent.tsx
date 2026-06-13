@@ -483,11 +483,16 @@ const PACKS = [
 
 /* ----------------------- Dates & storage ----------------------- */
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+/* Local-calendar YYYY-MM-DD (not UTC): a daily streak / spaced-review app
+   should roll over at the learner's midnight, and relative labels like
+   "tomorrow" must agree with their wall clock. */
+const ymd = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayStr = () => ymd(new Date());
 const addDays = (dateStr, n) => {
   const d = new Date(dateStr + "T12:00:00");
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return ymd(d);
 };
 /* Friendly relative phrasing for a due date (vs. a raw YYYY-MM-DD). */
 const relativeDue = (dueStr) => {
