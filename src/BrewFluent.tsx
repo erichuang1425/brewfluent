@@ -1299,7 +1299,12 @@ export default function BrewFluent() {
   };
 
   const startReview = () => {
-    setReviewQueue(dueItems.map((e) => `${e.packId}:${e.itemIdx}`));
+    // Queue the live bank keys, not a reconstructed `packId:itemIdx`. Pack
+    // entries key off `packId:itemIdx`, but flagship-scenario beats key off
+    // `scenario:<id>:<beat>` and carry no packId/itemIdx — reconstructing would
+    // yield "undefined:undefined", miss in the bank, and crash reviewSourceFor.
+    const dueKeys = Object.keys(bank).filter((k) => bank[k].due <= todayStr());
+    setReviewQueue(dueKeys);
     setReviewIdx(0);
     setReviewDoneCount(0);
     setFeedback(null);
