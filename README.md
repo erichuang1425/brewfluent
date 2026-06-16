@@ -49,6 +49,22 @@ advance the single canonical file [`src/BrewFluent.tsx`](src/BrewFluent.tsx):
 | **2 — Persistence + mistake bank** | pr2 | Real persistence via `window.storage` (streak, quest, mistake bank survive reloads). Spaced mistake bank with interval-doubling review. |
 | **3 — Ambient surface** | pr3 | New-tab "Softener of the Day" widget (the cheapest ambient micro-exposure surface) + normalized hit-matching for more reliable target detection. |
 
+Beyond the three prototype stages, the repo now also carries the first **v1**
+content: drill packs 3–5 (Refusals, Feedback, Closers) and the **flagship
+branching scenario**.
+
+### Flagship scenario — *Asking for the raise*
+
+The v1 signature piece: one hand-built branching scene (not a scenario engine —
+per the solo rescope, you ship *one instance* of the thing an engine would
+generate). You walk a real raise conversation beat by beat; each beat is a
+pick-the-brew choice whose verdict moves a **rapport meter** (hardcoded), the
+NPC's reply branches on your pick, and the **ending** branches on your final
+rapport — *commitment*, *door left open*, or *stalled*. Blunt and over-steeped
+beats are banked into the same spaced mistake bank, so the flagship still closes
+the `drill → … → bank` loop. It's fully hardcoded — no model call — so it can
+never degrade.
+
 ---
 
 ## Tech
