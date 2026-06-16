@@ -10,6 +10,14 @@ import { useState, useRef, useEffect } from "react";
      ships with its own roleplay scene and feeds the new-tab
      widget rotation. Pure authoring — no new surfaces, the same
      drill→transfer→roleplay→bank loop carries them.
+   - v1 flagship: one hand-built branching scenario ("Asking for
+     the raise") with a hardcoded rapport meter. Each beat is a
+     pick-the-brew choice whose verdict moves rapport; the NPC
+     branches its reply on your pick and the ending branches on
+     final rapport. Not a scenario engine — one instance, per the
+     rescope. Missed beats feed the same spaced mistake bank, so
+     the flagship still closes the drill→…→bank loop. Fully
+     hardcoded: no model call, so it can never degrade.
    ============================================================ */
 
 const T = {
@@ -481,6 +489,221 @@ const PACKS = [
   },
 ];
 
+/* ----------------------- Flagship branching scenario -----------------------
+
+   One hand-built scene, not an engine. The learner walks a real raise
+   conversation beat by beat; each beat is a pick-the-brew choice. The chosen
+   `verdict` moves `rapport` (hardcoded deltas), the NPC's `reply` branches on
+   the pick, and the ENDING branches on final rapport. Blunt/overdone picks are
+   banked for spaced review, so the flagship still feeds the core loop's bank.
+
+   Authoring rules (match the packs): every beat offers exactly one
+   "good" / one "blunt" / one "overdone" option; `gauge` 0–100 (~55 = sweet
+   spot); `target` is the softener pattern the beat trains (shown in the recap).
+*/
+const SCENARIO = {
+  id: "raise",
+  title: "Asking for the raise",
+  blurb: "One long scene, five real moments. Pick your phrasing and watch the room warm — or cool.",
+  setup:
+    "You booked fifteen minutes with your manager, Priya, to talk about your pay. She's fair but stretched, and the budget cycle is nearly closed. Five moments decide how this lands.",
+  startRapport: 50,
+  beats: [
+    {
+      id: "open",
+      situation:
+        "Priya looks up from her laptop. “Hey — you said you wanted to chat. What's up?”",
+      target: "Do you have a few minutes to talk about …?",
+      hint: "Name the topic and check the timing — don't ambush, don't over-apologize.",
+      choices: [
+        {
+          text: "I want a raise.",
+          verdict: "blunt",
+          gauge: 10,
+          rapport: -12,
+          reply:
+            "Her eyebrows go up. “Okay — straight to it, then.” She sets the laptop aside, a little guarded.",
+          coach: "Naming the moment first lets them get ready; leading with the demand puts them on the back foot.",
+        },
+        {
+          text: "Do you have a few minutes to talk about my role and compensation?",
+          verdict: "good",
+          gauge: 55,
+          rapport: 15,
+          reply: "“Of course.” She closes the laptop and turns toward you. “I've got time — go ahead.”",
+        },
+        {
+          text:
+            "Sorry, this is probably a bad time, it's nothing important really, we can totally do this later if you'd rather…",
+          verdict: "overdone",
+          gauge: 92,
+          rapport: -8,
+          reply: "“…Now I'm a little worried. What's going on?” She looks thrown by the build-up.",
+          coach: "All that throat-clearing reads as nerves — it makes a normal ask sound like bad news.",
+        },
+      ],
+    },
+    {
+      id: "ask",
+      situation: "“So — what's on your mind?”",
+      target: "I'd like to talk about my compensation.",
+      hint: "Say the real thing plainly. Clear isn't rude.",
+      choices: [
+        {
+          text: "My pay is too low and it needs to go up.",
+          verdict: "blunt",
+          gauge: 12,
+          rapport: -10,
+          reply: "“I hear you.” Her tone cools a notch. “Let's see what you've got.”",
+          coach: "“Too low” starts a fight about the number before she's heard your case.",
+        },
+        {
+          text: "I'd like to talk about my compensation — I think it's drifted behind what I'm contributing.",
+          verdict: "good",
+          gauge: 55,
+          rapport: 15,
+          reply: "“That's fair to raise. Tell me how you're seeing it.”",
+        },
+        {
+          text:
+            "I mean, I know money's tight and I'm grateful to even be here, so honestly if it's a hassle just forget I said anything…",
+          verdict: "overdone",
+          gauge: 90,
+          rapport: -8,
+          reply: "“You haven't even told me what you want yet.” She waits, patient but a little lost.",
+          coach: "Apologizing for the ask teaches her to take it less seriously than you do.",
+        },
+      ],
+    },
+    {
+      id: "case",
+      situation: "“Okay. Make the case — why now?”",
+      target: "Over the past year I've …",
+      hint: "Point to specific things you delivered — not how hard you worked or what you need.",
+      choices: [
+        {
+          text: "I work harder than everyone else on the team.",
+          verdict: "blunt",
+          gauge: 15,
+          rapport: -12,
+          reply: "“I'd be careful comparing yourself to teammates with me.” She shifts in her seat.",
+          coach: "Ranking yourself against peers makes it about them, not your work.",
+        },
+        {
+          text:
+            "Over the past year I led the billing migration and took on on-call — both were scoped above my level.",
+          verdict: "good",
+          gauge: 56,
+          rapport: 16,
+          reply: "She nods slowly, actually thinking. “Both of those were real. I won't pretend they weren't.”",
+        },
+        {
+          text:
+            "I've maybe done a few okay things I guess, nothing huge, like the billing thing, but anyone could've done that probably…",
+          verdict: "overdone",
+          gauge: 88,
+          rapport: -10,
+          reply: "“If you don't think it mattered, it's hard for me to argue that it did.” She frowns.",
+          coach: "Undercutting your own wins hands her the reason to say no.",
+        },
+      ],
+    },
+    {
+      id: "pushback",
+      situation:
+        "She exhales. “Here's the honest part — the budget for this cycle is basically set. I can't just conjure a number today.”",
+      target: "I understand the constraints — could we …?",
+      hint: "Acknowledge the real limit, then redirect to what IS possible. Don't concede, don't steamroll.",
+      choices: [
+        {
+          text: "That's not my problem — other companies would pay me more.",
+          verdict: "blunt",
+          gauge: 8,
+          rapport: -15,
+          reply: "“Then that's a conversation you have to have with yourself.” The warmth drops out of the room.",
+          coach: "An ultimatum can work once — but it costs you the relationship you'll still need tomorrow.",
+        },
+        {
+          text:
+            "I understand the cycle's constraints — could we agree on what would justify an adjustment, and set a date to revisit?",
+          verdict: "good",
+          gauge: 57,
+          rapport: 16,
+          reply: "“Now that I can work with.” She pulls up her calendar. “Let's define it and put a date on it.”",
+        },
+        {
+          text:
+            "Oh, totally — no, forget it, the budget's the budget, I completely understand, it's fine, really, I shouldn't have asked…",
+          verdict: "overdone",
+          gauge: 90,
+          rapport: -10,
+          reply: "“…So should I drop it?” She honestly can't tell if you still want this.",
+          coach: "Folding the second you meet resistance tells her the ask wasn't real.",
+        },
+      ],
+    },
+    {
+      id: "close",
+      situation: "“So — where do we leave this?”",
+      target: "Could we put a date on revisiting …?",
+      hint: "Lock a concrete next step so the conversation doesn't quietly evaporate.",
+      choices: [
+        {
+          text: "I expect an answer by Friday.",
+          verdict: "blunt",
+          gauge: 14,
+          rapport: -10,
+          reply: "“You'll get an answer when I've done the work to give you a real one.” She bristles at the deadline.",
+          coach: "A hard deadline on her turns the whole ask into a demand at the finish line.",
+        },
+        {
+          text:
+            "Could we put a date on revisiting this — say our first 1:1 next month, with the criteria written down?",
+          verdict: "good",
+          gauge: 56,
+          rapport: 15,
+          reply: "“Done. I'll write up the criteria this week, and we'll review it then.”",
+        },
+        {
+          text: "Whenever's fine, no rush at all — next month, next quarter, honestly whenever you get to it…",
+          verdict: "overdone",
+          gauge: 89,
+          rapport: -8,
+          reply: "“Let's say… sometime.” And you can feel it sliding off the table.",
+          coach: "“Whenever” is where good asks go to die — pin it to a date.",
+        },
+      ],
+    },
+  ],
+  // Endings branch on FINAL rapport (highest threshold first wins).
+  endings: [
+    {
+      min: 72,
+      verdict: "good",
+      title: "You got the commitment.",
+      body:
+        "Priya didn't hand you a number — but she left convinced, with written criteria and a date on the calendar. That's what a real raise conversation produces: not a yes on the spot, a yes in motion.",
+    },
+    {
+      min: 45,
+      verdict: "overdone",
+      title: "You kept the door open.",
+      body:
+        "No commitment, but no damage either. Priya heard you out and the relationship's intact — you can come back to this. Tightening the soft spots below would have turned “maybe” into a plan.",
+    },
+    {
+      min: 0,
+      verdict: "blunt",
+      title: "It stalled.",
+      body:
+        "The ask landed, but the delivery cost you. Priya got defensive and the scene closed without a next step. The good news: this was practice. Re-steep the missed beats and run it again.",
+    },
+  ],
+};
+
+const scenarioEnding = (rapport) =>
+  SCENARIO.endings.find((e) => rapport >= e.min) || SCENARIO.endings[SCENARIO.endings.length - 1];
+
 /* ----------------------- Dates & storage ----------------------- */
 
 /* Local-calendar YYYY-MM-DD (not UTC): a daily streak / spaced-review app
@@ -867,6 +1090,58 @@ function Chip({ children, hot }) {
   );
 }
 
+/* Rapport meter for the flagship scenario. Unlike the SteepGauge (where the
+   middle is the target), rapport is simply better to the right — warmth you can
+   win or lose. Same brand language: a needle riding a bad→mist→leaf gradient. */
+function RapportMeter({ rapport }) {
+  const pct = Math.max(0, Math.min(100, rapport));
+  const label = pct >= 70 ? "Warm" : pct >= 45 ? "Cordial" : "Strained";
+  const color = pct >= 70 ? T.leaf : pct >= 45 ? T.copper : T.bad;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontFamily: "'Karla', sans-serif",
+          fontSize: 11,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: T.inkSoft,
+          marginBottom: 6,
+        }}
+      >
+        <span>Rapport</span>
+        <span style={{ color, fontWeight: 700 }}>{label}</span>
+      </div>
+      <div
+        style={{
+          position: "relative",
+          height: 10,
+          borderRadius: 6,
+          background: `linear-gradient(90deg, ${T.bad} 0%, ${T.mist} 50%, ${T.leaf} 100%)`,
+          opacity: 0.9,
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: `calc(${pct}% - 8px)`,
+            top: -4,
+            width: 16,
+            height: 18,
+            borderRadius: 5,
+            background: T.surface,
+            border: `2.5px solid ${color}`,
+            boxShadow: "0 1px 3px rgba(32,37,27,0.25)",
+            transition: "left 0.5s cubic-bezier(.3,1.2,.4,1)",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------- Main app ----------------------- */
 
 export default function BrewFluent() {
@@ -907,6 +1182,14 @@ export default function BrewFluent() {
   // True once any turn this scene fell back offline — hit detection is then
   // unreliable, so we don't auto-bank "misses" we can't actually verify.
   const rpDegradedRef = useRef(false);
+
+  // flagship scenario state
+  const [sBeat, setSBeat] = useState(0);
+  const [rapport, setRapport] = useState(SCENARIO.startRapport);
+  const [sPick, setSPick] = useState(null); // chosen choice for the current beat, or null
+  const [sResults, setSResults] = useState([]); // verdict per resolved beat, in order
+  const [sScript, setSScript] = useState([]); // transcript bubbles {role, text, coach?}
+  const scenarioEndRef = useRef(null);
 
   /* ---------- hydrate from storage ---------- */
   useEffect(() => {
@@ -957,6 +1240,10 @@ export default function BrewFluent() {
   }, [chat, chatBusy]);
 
   useEffect(() => {
+    scenarioEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [sScript]);
+
+  useEffect(() => {
     const id = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(id);
   }, []);
@@ -994,6 +1281,17 @@ export default function BrewFluent() {
   };
 
   const reviewSourceFor = (entry) => {
+    // Self-contained entries (e.g. flagship-scenario beats) carry everything the
+    // review needs on the entry itself, so they don't depend on a PACKS lookup.
+    if (entry.prompt) {
+      return {
+        packName: entry.packName || "Scenario",
+        prompt: entry.prompt,
+        blunt: entry.blunt,
+        target: entry.target,
+        hint: entry.hint,
+      };
+    }
     const p = PACKS.find((x) => x.id === entry.packId);
     const item = p.items[entry.itemIdx];
     const blunt = item.type === "rewrite" ? item.blunt : item.options.find((o) => o.verdict === "blunt").text;
@@ -1001,7 +1299,12 @@ export default function BrewFluent() {
   };
 
   const startReview = () => {
-    setReviewQueue(dueItems.map((e) => `${e.packId}:${e.itemIdx}`));
+    // Queue the live bank keys, not a reconstructed `packId:itemIdx`. Pack
+    // entries key off `packId:itemIdx`, but flagship-scenario beats key off
+    // `scenario:<id>:<beat>` and carry no packId/itemIdx — reconstructing would
+    // yield "undefined:undefined", miss in the bank, and crash reviewSourceFor.
+    const dueKeys = Object.keys(bank).filter((k) => bank[k].due <= todayStr());
+    setReviewQueue(dueKeys);
     setReviewIdx(0);
     setReviewDoneCount(0);
     setFeedback(null);
@@ -1128,6 +1431,61 @@ export default function BrewFluent() {
       const newQuest = { ...quest, roleplay: true };
       setQuest(newQuest);
       persistState({ quest: newQuest });
+    }
+  };
+
+  /* ---------- flagship scenario flow ---------- */
+  const startScenario = () => {
+    setSBeat(0);
+    setRapport(SCENARIO.startRapport);
+    setSPick(null);
+    setSResults([]);
+    setSScript([{ role: "npc", text: SCENARIO.beats[0].situation }]);
+    setScreen("scenario");
+  };
+
+  const pickScenarioBeat = (choice) => {
+    if (sPick) return; // beat already resolved
+    const beat = SCENARIO.beats[sBeat];
+    setSPick(choice);
+    setRapport((r) => Math.max(0, Math.min(100, r + choice.rapport)));
+    setSResults((rs) => [...rs, choice.verdict]);
+    setSScript((s) => [
+      ...s,
+      { role: "user", text: choice.text },
+      { role: "npc", text: choice.reply, coach: choice.verdict !== "good" ? choice.coach : null },
+    ]);
+    // Bank the soft spots. A blunt/overdone beat is exactly the transfer gap the
+    // bank exists to catch — store it self-contained so spaced review can re-drill
+    // it without a PACKS lookup (see reviewSourceFor).
+    if (choice.verdict !== "good") {
+      const blunt = beat.choices.find((c) => c.verdict === "blunt").text;
+      const key = `scenario:${SCENARIO.id}:${sBeat}`;
+      setBank((prev) => {
+        const e = prev[key] || {
+          packName: SCENARIO.title,
+          prompt: beat.situation,
+          blunt,
+          target: beat.target,
+          hint: beat.hint,
+          interval: 1,
+          misses: 0,
+        };
+        const next = { ...prev, [key]: { ...e, misses: e.misses + 1, interval: 1, due: todayStr() } };
+        saveStore("bf:mistakes", next);
+        return next;
+      });
+    }
+  };
+
+  const continueScenario = () => {
+    if (sBeat + 1 < SCENARIO.beats.length) {
+      const nextBeat = sBeat + 1;
+      setSBeat(nextBeat);
+      setSPick(null);
+      setSScript((s) => [...s, { role: "npc", text: SCENARIO.beats[nextBeat].situation }]);
+    } else {
+      setScreen("scenarioRecap");
     }
   };
 
@@ -1260,6 +1618,34 @@ export default function BrewFluent() {
             </p>
           )}
         </div>
+
+        <button
+          onClick={startScenario}
+          style={{
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            background: T.leafDeep,
+            color: T.surface,
+            border: "none",
+            borderRadius: 16,
+            padding: "18px",
+            marginBottom: 22,
+            cursor: "pointer",
+            fontFamily: "'Karla', sans-serif",
+          }}
+        >
+          <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: T.mist, fontWeight: 700 }}>
+            Flagship scenario
+          </div>
+          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 650, margin: "6px 0 0" }}>
+            {SCENARIO.title}
+          </div>
+          <div style={{ fontSize: 14, opacity: 0.82, marginTop: 4, lineHeight: 1.45 }}>{SCENARIO.blurb}</div>
+          <div style={{ color: T.mist, fontWeight: 700, fontSize: 13, marginTop: 10 }}>
+            {SCENARIO.beats.length} beats · rapport on the line ›
+          </div>
+        </button>
 
         <div style={{ fontFamily: "'Fraunces', serif", fontSize: 19, fontWeight: 650, marginBottom: 12 }}>
           Drill packs
@@ -1931,6 +2317,154 @@ export default function BrewFluent() {
         <Btn onClick={() => setScreen("home")}>Back home</Btn>
         <Btn kind="ghost" onClick={() => startPack(pack)} style={{ marginTop: 10 }}>
           Run the pack again
+        </Btn>
+      </>
+    );
+  }
+
+  /* ---------- FLAGSHIP SCENARIO ---------- */
+  if (screen === "scenario") {
+    const beat = SCENARIO.beats[sBeat];
+    return shell(
+      <>
+        {header}
+        <div style={{ display: "flex", gap: 5, margin: "14px 0 14px" }}>
+          {SCENARIO.beats.map((_, i) => (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                height: 5,
+                borderRadius: 3,
+                background: i < sBeat ? T.leaf : i === sBeat ? T.copper : T.line,
+                transition: "background 0.3s",
+              }}
+            />
+          ))}
+        </div>
+
+        <RapportMeter rapport={rapport} />
+
+        <div style={{ fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase", color: T.inkSoft, fontWeight: 700 }}>
+          {SCENARIO.title} · beat {sBeat + 1} of {SCENARIO.beats.length}
+        </div>
+
+        <div
+          style={{
+            background: T.surface,
+            border: `1.5px solid ${T.line}`,
+            borderRadius: 16,
+            padding: "14px",
+            maxHeight: "34vh",
+            overflowY: "auto",
+            margin: "10px 0 14px",
+          }}
+        >
+          {sScript.map((m, i) => (
+            <div key={i} style={{ marginBottom: 12 }}>
+              <div
+                style={{
+                  maxWidth: "85%",
+                  marginLeft: m.role === "user" ? "auto" : 0,
+                  background: m.role === "user" ? T.leafDeep : T.mist,
+                  color: m.role === "user" ? T.surface : T.ink,
+                  borderRadius: 14,
+                  padding: "10px 14px",
+                  fontSize: 14.5,
+                  lineHeight: 1.45,
+                }}
+              >
+                {m.text}
+              </div>
+              {m.coach && (
+                <div style={{ fontSize: 12.5, color: T.copper, marginTop: 5, fontStyle: "italic" }}>
+                  whisper: {m.coach}
+                </div>
+              )}
+            </div>
+          ))}
+          <div ref={scenarioEndRef} />
+        </div>
+
+        {!sPick ? (
+          <>
+            <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 10 }}>Hint: {beat.hint}</div>
+            {beat.choices.map((c, i) => (
+              <button
+                key={i}
+                onClick={() => pickScenarioBeat(c)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  fontFamily: "'Karla', sans-serif",
+                  fontSize: 15,
+                  lineHeight: 1.45,
+                  background: T.surface,
+                  color: T.ink,
+                  border: `1.5px solid ${T.line}`,
+                  borderRadius: 14,
+                  padding: "14px 16px",
+                  marginBottom: 10,
+                  cursor: "pointer",
+                }}
+              >
+                “{c.text}”
+              </button>
+            ))}
+          </>
+        ) : (
+          <div
+            style={{
+              background: T.surface,
+              border: `1.5px solid ${sPick.verdict === "good" ? T.leaf : T.line}`,
+              borderRadius: 16,
+              padding: "16px 18px",
+            }}
+          >
+            <SteepGauge gauge={sPick.gauge} verdict={sPick.verdict} />
+            <div style={{ marginTop: 14, fontSize: 13, color: T.leafDeep, fontWeight: 700 }}>
+              Pattern: {beat.target}
+            </div>
+            <Btn onClick={continueScenario} style={{ marginTop: 14 }}>
+              {sBeat + 1 < SCENARIO.beats.length ? "Continue" : "See how it landed"}
+            </Btn>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /* ---------- SCENARIO RECAP ---------- */
+  if (screen === "scenarioRecap") {
+    const ending = scenarioEnding(rapport);
+    const isBanked = (beatIdx) => !!bank[`scenario:${SCENARIO.id}:${beatIdx}`];
+    return shell(
+      <>
+        {header}
+        <RapportMeter rapport={rapport} />
+        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 24, fontWeight: 650, margin: "18px 0 8px" }}>
+          {ending.title}
+        </h2>
+        <p style={{ color: T.inkSoft, fontSize: 15, lineHeight: 1.55 }}>{ending.body}</p>
+
+        <div style={{ margin: "18px 0 20px" }}>
+          {SCENARIO.beats.map((b, i) => {
+            const good = sResults[i] === "good";
+            return (
+              <div key={b.id} style={{ fontSize: 14.5, lineHeight: 1.8 }}>
+                {good ? "✓" : "○"} {b.target}
+                {!good && isBanked(i) && (
+                  <span style={{ color: T.copper, fontSize: 13 }}> — re-steeping</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <Btn onClick={() => setScreen("home")}>Back home</Btn>
+        <Btn kind="ghost" onClick={startScenario} style={{ marginTop: 10 }}>
+          Run the scene again
         </Btn>
       </>
     );
