@@ -50,8 +50,9 @@ advance the single canonical file [`src/BrewFluent.tsx`](src/BrewFluent.tsx):
 | **3 — Ambient surface** | pr3 | New-tab "Softener of the Day" widget (the cheapest ambient micro-exposure surface) + normalized hit-matching for more reliable target detection. |
 
 Beyond the three prototype stages, the repo now also carries the first **v1**
-content: drill packs 3–5 (Refusals, Feedback, Closers) and the **flagship
-branching scenario**.
+content: drill packs 3–5 (Refusals, Feedback, Closers), the **flagship
+branching scenario**, a lightweight **tips library**, and **Pressure Mode** for
+shorter, less-forgiving transfer practice.
 
 ### Flagship scenario — *Asking for the raise*
 
@@ -64,6 +65,17 @@ rapport — *commitment*, *door left open*, or *stalled*. Blunt and over-steeped
 beats are banked into the same spaced mistake bank, so the flagship still closes
 the `drill → … → bank` loop. It's fully hardcoded — no model call — so it can
 never degrade.
+
+
+### Tips library and Pressure Mode
+
+The v1 solo-friendly supporting surfaces are now represented in the prototype:
+
+- **Tips library:** three self-authored micro-lessons with attached rewrite chunks,
+  so learners can read a pattern and immediately re-steep it.
+- **Pressure Mode:** an alternate roleplay launch that tells the NPC to be rushed
+  and less patient, with a shorter completion window. It reuses the same target
+  chips, recap, quest, and mistake-bank loop.
 
 ---
 
