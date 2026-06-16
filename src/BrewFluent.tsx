@@ -758,6 +758,39 @@ const fragMatch = (text, target) => {
 };
 
 /* Daily rotation for the new-tab "Softener of the Day" widget */
+const TIPS = [
+  {
+    id: "ask-with-an-out",
+    title: "Requests land better with an out",
+    lesson:
+      "A request gets warmer when the other person can say no, negotiate timing, or choose the path. The point still lands; it just stops sounding like an order.",
+    chunks: [
+      { blunt: "Send me the report by 5.", target: "Would you be able to …?", model: "Would you be able to send the report by 5? If tomorrow morning is more realistic, that works too." },
+      { blunt: "Move our 1:1 to Thursday.", target: "Would it work for you if …?", model: "Would it work for you if we moved our 1:1 to Thursday?" },
+    ],
+  },
+  {
+    id: "disagree-name-worry",
+    title: "Push back by naming the worry",
+    lesson:
+      "Disagreement sounds less personal when you name the risk instead of judging the idea. Try: what worries you, what evidence points there, and what alternate path you want.",
+    chunks: [
+      { blunt: "That idea won't work.", target: "My worry with that is …", model: "My worry with that is the rollout timing — could we phase it?" },
+      { blunt: "You're missing the point.", target: "Maybe I'm not explaining it well — what I mean is …", model: "Maybe I'm not explaining it well — what I mean is the QA window is the risky part." },
+    ],
+  },
+  {
+    id: "clear-no",
+    title: "A good no has a warm edge",
+    lesson:
+      "A refusal should not become a maze. Name the no, give one real constraint, and offer a small next door only if you mean it.",
+    chunks: [
+      { blunt: "I can't help, I'm busy.", target: "I'm stretched thin this week — could we look at next week?", model: "I'm stretched thin this week, so I can't take this on now — could we look at next week?" },
+      { blunt: "Not interested.", target: "This isn't a fit for us right now — I'll reach out if that changes.", model: "This isn't a fit for us right now, but I'll reach out if that changes." },
+    ],
+  },
+];
+
 const DAILY_SOFTENERS = [
   {
     pattern: "Could you … when you get a chance?",
@@ -933,7 +966,7 @@ gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
   };
 }
 
-async function roleplayTurn(pack, targets, transcript) {
+async function roleplayTurn(pack, targets, transcript, pressure = false) {
   const history = transcript
     .map((m) => `${m.role === "user" ? "LEARNER" : "NPC"}: ${m.text}`)
     .join("\n");
@@ -950,6 +983,7 @@ ${history}
 
 Rules:
 - Reply in character, 1-3 sentences, natural spoken English.
+${pressure ? '- PRESSURE MODE: act more impatient, introduce one small complication, and push for clarity quickly.' : ''}
 - In "hits", copy verbatim the target strings (exactly as written in PRACTICE TARGETS above) that the learner used or closely paraphrased in their LAST message only. Never invent strings that are not in the list.
 - If the learner's last message was blunt or over-hedged, set "coach" to one short whispered tip; otherwise null.
 - Set "done" true once the conversation reaches a natural resolution (agreement/compromise), and make your reply a closing line.
@@ -978,7 +1012,7 @@ Respond ONLY with JSON, no markdown:
       .filter((s) => s.length >= 4)
       .some((f) => lu.includes(f))
   );
-  const done = userTurns.length >= 3;
+  const done = userTurns.length >= (pressure ? 2 : 3);
   const reply = done
     ? `(${npcName} nods.) Okay — that works for me. Let's go with that.`
     : userTurns.length <= 1
@@ -1171,6 +1205,8 @@ export default function BrewFluent() {
   // new-tab widget preview
   const [clock, setClock] = useState(new Date());
   const [widgetMode, setWidgetMode] = useState("card"); // card | drill
+  const [activeTip, setActiveTip] = useState(null);
+  const [tipChunk, setTipChunk] = useState(0);
 
   // roleplay state
   const [chat, setChat] = useState([]);
@@ -1178,6 +1214,7 @@ export default function BrewFluent() {
   const [chatBusy, setChatBusy] = useState(false);
   const [hits, setHits] = useState([]);
   const [rpDone, setRpDone] = useState(false);
+  const [pressure, setPressure] = useState(false);
   const chatEndRef = useRef(null);
   // True once any turn this scene fell back offline — hit detection is then
   // unreliable, so we don't auto-bank "misses" we can't actually verify.
@@ -1384,7 +1421,8 @@ export default function BrewFluent() {
   };
 
   /* ---------- roleplay flow ---------- */
-  const startRoleplay = async () => {
+  const startRoleplay = async (pressureMode = false) => {
+    setPressure(pressureMode);
     setChat([]);
     setHits([]);
     setRpDone(false);
@@ -1392,8 +1430,8 @@ export default function BrewFluent() {
     setScreen("roleplay");
     setChatBusy(true);
     const first = await roleplayTurn(pack, transferTargets(), [
-      { role: "user", text: "(The learner approaches. Open the scene with your first line.)" },
-    ]);
+      { role: "user", text: pressureMode ? "(The learner approaches. Open the scene with your first line, but you are rushed.)" : "(The learner approaches. Open the scene with your first line.)" },
+    ], pressureMode);
     if (first.offline) rpDegradedRef.current = true;
     setChat([{ role: "npc", text: first.reply }]);
     setChatBusy(false);
@@ -1406,7 +1444,7 @@ export default function BrewFluent() {
     setChat(newChat);
     setChatInput("");
     setChatBusy(true);
-    const out = await roleplayTurn(pack, transferTargets(), newChat);
+    const out = await roleplayTurn(pack, transferTargets(), newChat, pressure);
     if (out.offline) rpDegradedRef.current = true;
     // Merge the NPC's reported hits with a local fragment match on the
     // learner's own message, so detection survives offline fallbacks and
@@ -1680,12 +1718,26 @@ export default function BrewFluent() {
         <Btn
           kind="ghost"
           onClick={() => {
+            setActiveTip(TIPS[0]);
+            setTipChunk(0);
+            setFeedback(null);
+            setRewriteText("");
+            setScreen("tips");
+          }}
+          style={{ marginTop: 4 }}
+        >
+          Tips library
+        </Btn>
+
+        <Btn
+          kind="ghost"
+          onClick={() => {
             setWidgetMode("card");
             setFeedback(null);
             setRewriteText("");
             setScreen("widget");
           }}
-          style={{ marginTop: 4 }}
+          style={{ marginTop: 10 }}
         >
           Preview: new-tab widget
         </Btn>
@@ -1727,6 +1779,98 @@ export default function BrewFluent() {
         </div>
       </>
     );
+
+
+  /* ---------- TIPS LIBRARY ---------- */
+  if (screen === "tips") {
+    const tip = activeTip || TIPS[0];
+    const chunk = tip.chunks[tipChunk];
+    return shell(
+      <>
+        {header}
+        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 650, margin: "18px 0 8px" }}>
+          Tips library
+        </div>
+        <p style={{ color: T.inkSoft, fontSize: 14.5, lineHeight: 1.5, marginTop: 0 }}>
+          Short founder-authored lessons. Read one, then re-steep a chunk right away.
+        </p>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
+          {TIPS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => { setActiveTip(t); setTipChunk(0); setFeedback(null); setRewriteText(""); }}
+              style={{
+                flex: "0 0 72%",
+                textAlign: "left",
+                background: t.id === tip.id ? T.mist : T.surface,
+                border: `1.5px solid ${t.id === tip.id ? T.leaf : T.line}`,
+                borderRadius: 14,
+                padding: "12px 14px",
+                fontFamily: "'Karla', sans-serif",
+                color: T.ink,
+              }}
+            >
+              <strong>{t.title}</strong>
+            </button>
+          ))}
+        </div>
+        <div style={{ background: T.surface, border: `1.5px solid ${T.line}`, borderRadius: 16, padding: "16px 18px" }}>
+          <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, margin: "0 0 8px" }}>{tip.title}</h2>
+          <p style={{ color: T.inkSoft, fontSize: 14.5, lineHeight: 1.55 }}>{tip.lesson}</p>
+          <div style={{ fontSize: 13, color: T.leafDeep, fontWeight: 700, marginBottom: 8 }}>
+            Chunk {tipChunk + 1} of {tip.chunks.length} · {chunk.target}
+          </div>
+          <div style={{ fontSize: 15, fontStyle: "italic", marginBottom: 10 }}>“{chunk.blunt}”</div>
+          {!feedback ? (
+            <>
+              <textarea
+                value={rewriteText}
+                onChange={(e) => setRewriteText(e.target.value)}
+                placeholder="Try the softer version…"
+                rows={3}
+                style={{ width: "100%", fontFamily: "'Karla', sans-serif", fontSize: 15, padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${T.line}`, background: T.bg, color: T.ink, resize: "vertical", marginBottom: 10 }}
+              />
+              <Btn disabled={!rewriteText.trim() || scoring} onClick={async () => {
+                setScoring(true);
+                const r = await scoreRewrite({ blunt: chunk.blunt, target: chunk.target }, rewriteText.trim());
+                if (r.verdict !== "good") {
+                  const key = `tip:${tip.id}:${tipChunk}`;
+                  setBank((prev) => {
+                    const e = prev[key] || {
+                      packName: "Tips library",
+                      prompt: tip.title,
+                      blunt: chunk.blunt,
+                      target: chunk.target,
+                      hint: tip.lesson,
+                      interval: 1,
+                      misses: 0,
+                    };
+                    const next = { ...prev, [key]: { ...e, misses: e.misses + 1, interval: 1, due: todayStr() } };
+                    saveStore("bf:mistakes", next);
+                    return next;
+                  });
+                }
+                setFeedback(r);
+                setScoring(false);
+              }}>
+                {scoring ? "Steeping…" : "Check my brew"}
+              </Btn>
+            </>
+          ) : (
+            <>
+              <SteepGauge gauge={feedback.gauge} verdict={feedback.verdict} />
+              <p style={{ fontSize: 14.5, lineHeight: 1.5 }}>{feedback.feedback}</p>
+              {feedback.verdict !== "good" && <p style={{ fontSize: 13.5, color: T.inkSoft }}>e.g. <em>“{chunk.model}”</em></p>}
+              <Btn onClick={() => { setFeedback(null); setRewriteText(""); setTipChunk((i) => (i + 1) % tip.chunks.length); }} style={{ marginTop: 10 }}>
+                Next chunk
+              </Btn>
+            </>
+          )}
+        </div>
+        <Btn kind="ghost" onClick={() => setScreen("home")} style={{ marginTop: 14 }}>Back home</Btn>
+      </>
+    );
+  }
 
   /* ---------- NEW-TAB WIDGET PREVIEW ---------- */
   if (screen === "widget") {
@@ -2184,7 +2328,10 @@ export default function BrewFluent() {
             {pack.roleplay.setup}
           </p>
         </div>
-        <Btn onClick={startRoleplay}>Start roleplay</Btn>
+        <Btn onClick={() => startRoleplay(false)}>Start roleplay</Btn>
+        <Btn kind="ghost" onClick={() => startRoleplay(true)} style={{ marginTop: 10 }}>
+          Pressure mode: rushed partner
+        </Btn>
         <Btn kind="ghost" onClick={() => setScreen("home")} style={{ marginTop: 10 }}>
           Back home
         </Btn>
@@ -2197,6 +2344,11 @@ export default function BrewFluent() {
     return shell(
       <>
         {header}
+        {pressure && (
+          <div style={{ margin: "8px 0", color: T.copper, fontSize: 12.5, fontWeight: 700 }}>
+            Pressure mode · shorter scene, less patient partner
+          </div>
+        )}
         <div style={{ margin: "10px 0 8px" }}>
           {targets.map((t) => (
             <Chip key={t} hot={hitMatch(hits, t)}>
