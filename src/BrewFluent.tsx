@@ -1435,13 +1435,15 @@ export default function BrewFluent() {
       saveStore("bf:mistakes", next);
       return next;
     });
-    // A clean review is fresh proof the softener is right; a deep interval
-    // (≥4 days) is the long-term-retention bar that lights the top leaf.
+    // A clean review is fresh proof the softener is right. The top leaf needs
+    // long-term retention, so gate it on the interval the learner *just
+    // survived* (e.interval) clearing the ≥4-day bar — not the doubled interval,
+    // which has only been scheduled for next time.
     if (verdict === "good") {
       const e = bank[key];
       if (e) {
         const fields = { drilledGood: true };
-        if (e.interval * 2 >= 4) fields.reviewedDeep = true;
+        if (e.interval >= 4) fields.reviewedDeep = true;
         bumpMastery(key, e.target, fields);
       }
     }
