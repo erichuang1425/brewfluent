@@ -18,6 +18,12 @@ import { useState, useRef, useEffect } from "react";
      rescope. Missed beats feed the same spaced mistake bank, so
      the flagship still closes the drill→…→bank loop. Fully
      hardcoded: no model call, so it can never degrade.
+   - v1.5 seed: a Steep Tree mastery overview. Each softener's
+     level is read straight off the existing loop — drilled
+     right (Warming) → carried into a roleplay (Brewed) → survived
+     a deep spaced review (Steeped) — so it adds no new signal and
+     no inference. Persisted under `bf:mastery`, keyed exactly like
+     the mistake bank. Home pack cards gain a glanceable dot row.
    ============================================================ */
 
 const T = {
@@ -757,6 +763,32 @@ const fragMatch = (text, target) => {
   return parts.every((p) => t.includes(p));
 };
 
+/* ----------------------- Mastery model ----------------------- */
+
+/* The Steep Tree reads a softener's mastery straight off the core loop — no new
+   signal, no new inference. Each stage of drill→transfer→review lights the next
+   leaf:
+     0 Unbrewed — never gotten right
+     1 Warming  — drilled correctly OR carried live once
+     2 Brewed   — drilled correctly AND carried into a roleplay (the transfer)
+     3 Steeped  — survived spaced review at a deep interval (long-term retention)
+   Stored per softener under `bf:mastery`, keyed exactly like the mistake bank
+   (`<packId>:<itemIdx>` for pack drills, `scenario:<id>:<beat>` for beats) so the
+   two stay in lockstep without a second source of truth. */
+const MASTERY = [
+  { label: "Unbrewed", color: T.line },
+  { label: "Warming", color: T.copper },
+  { label: "Brewed", color: T.leaf },
+  { label: "Steeped", color: T.leafDeep },
+];
+const masteryLevel = (m) => {
+  if (!m) return 0;
+  if (m.reviewedDeep) return 3;
+  if (m.drilledGood && m.transferred) return 2;
+  if (m.drilledGood || m.transferred) return 1;
+  return 0;
+};
+
 /* Daily rotation for the new-tab "Softener of the Day" widget */
 const TIPS = [
   {
@@ -1124,6 +1156,29 @@ function Chip({ children, hot }) {
   );
 }
 
+/* A row of leaf-dots, one per softener, filled by mastery level. The shared
+   readout for the Steep Tree and the home pack cards — a glanceable "how far has
+   this brewed" without numbers. An empty (Unbrewed) dot is a hollow ring. */
+function SteepDots({ levels, size = 9 }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+      {levels.map((lv, i) => (
+        <span
+          key={i}
+          aria-hidden="true"
+          style={{
+            width: size,
+            height: size,
+            borderRadius: "50%",
+            background: lv === 0 ? "transparent" : MASTERY[lv].color,
+            border: `1.5px solid ${lv === 0 ? T.line : MASTERY[lv].color}`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 /* Rapport meter for the flagship scenario. Unlike the SteepGauge (where the
    middle is the target), rapport is simply better to the right — warmth you can
    win or lose. Same brand language: a needle riding a bad→mist→leaf gradient. */
@@ -1195,6 +1250,7 @@ export default function BrewFluent() {
   const [quest, setQuest] = useState({ drill: false, roleplay: false });
   const [questCelebrated, setQuestCelebrated] = useState(false);
   const [bank, setBank] = useState({}); // key `${packId}:${itemIdx}` → {packId,itemIdx,target,interval,due,misses}
+  const [mastery, setMastery] = useState({}); // same keys as bank → {target,drilledGood,transferred,reviewedDeep}
   const [confirmReset, setConfirmReset] = useState(false);
 
   // review state
@@ -1233,6 +1289,7 @@ export default function BrewFluent() {
     (async () => {
       const s = await loadStore("bf:state", null);
       const b = await loadStore("bf:mistakes", {});
+      const m = await loadStore("bf:mastery", {});
       const t = todayStr();
       if (s) {
         setStreak(s.streak || 0);
@@ -1243,6 +1300,7 @@ export default function BrewFluent() {
         }
       }
       setBank(b || {});
+      setMastery(m || {});
       setHydrated(true);
     })();
   }, []);
@@ -1293,9 +1351,24 @@ export default function BrewFluent() {
   /* ---------- mistake bank ---------- */
   const dueItems = Object.values(bank).filter((e) => e.due <= todayStr());
 
+  /* Light up a softener's mastery from a loop event. Merges flags (never clears
+     them — mastery only climbs) and persists, keyed exactly like the bank. */
+  const bumpMastery = (key, target, fields) => {
+    setMastery((prev) => {
+      const e = prev[key] || { target, drilledGood: false, transferred: false, reviewedDeep: false };
+      const next = { ...prev, [key]: { ...e, target, ...fields } };
+      saveStore("bf:mastery", next);
+      return next;
+    });
+  };
+
+  // Per-softener mastery levels for a pack (used on the home pack cards).
+  const packLevels = (p) => p.items.map((_, i) => masteryLevel(mastery[`${p.id}:${i}`]));
+
   const recordResult = (item, verdict) => {
     if (verdict === "good") {
       setNailed((n) => [...new Set([...n, item.target])]);
+      bumpMastery(`${pack.id}:${idx}`, item.target, { drilledGood: true });
     } else {
       setMissed((m) => [...new Set([...m, item.target])]);
       const key = `${pack.id}:${idx}`;
@@ -1362,6 +1435,16 @@ export default function BrewFluent() {
       saveStore("bf:mistakes", next);
       return next;
     });
+    // A clean review is fresh proof the softener is right; a deep interval
+    // (≥4 days) is the long-term-retention bar that lights the top leaf.
+    if (verdict === "good") {
+      const e = bank[key];
+      if (e) {
+        const fields = { drilledGood: true };
+        if (e.interval * 2 >= 4) fields.reviewedDeep = true;
+        bumpMastery(key, e.target, fields);
+      }
+    }
   };
 
   /* ---------- drill flow ---------- */
@@ -1453,6 +1536,11 @@ export default function BrewFluent() {
     const localHits = transferTargets().filter((t) => fragMatch(text, t));
     const mergedHits = [...new Set([...hits, ...(out.hits || []), ...localHits])];
     setHits(mergedHits);
+    // A live hit is the transfer half of the loop — light each carried softener
+    // that landed. Matching off the pack's own targets keeps it keyed to bank.
+    pack.items.forEach((it, i) => {
+      if (hitMatch(mergedHits, it.target)) bumpMastery(`${pack.id}:${i}`, it.target, { transferred: true });
+    });
     setChat((c) => [
       ...c,
       { role: "npc", text: out.reply, coach: out.coach && out.coach !== "null" ? out.coach : null },
@@ -1493,6 +1581,11 @@ export default function BrewFluent() {
       { role: "user", text: choice.text },
       { role: "npc", text: choice.reply, coach: choice.verdict !== "good" ? choice.coach : null },
     ]);
+    // A nailed beat lights the flagship softener in the Steep Tree, same key the
+    // bank would use for a miss — the two stay in lockstep.
+    if (choice.verdict === "good") {
+      bumpMastery(`scenario:${SCENARIO.id}:${sBeat}`, beat.target, { drilledGood: true });
+    }
     // Bank the soft spots. A blunt/overdone beat is exactly the transfer gap the
     // bank exists to catch — store it self-contained so spaced review can re-drill
     // it without a PACKS lookup (see reviewSourceFor).
@@ -1530,11 +1623,13 @@ export default function BrewFluent() {
   const resetProgress = async () => {
     await wipeStore("bf:state");
     await wipeStore("bf:mistakes");
+    await wipeStore("bf:mastery");
     setStreak(0);
     setLastDone(null);
     setQuest({ drill: false, roleplay: false });
     setQuestCelebrated(false);
     setBank({});
+    setMastery({});
     setConfirmReset(false);
   };
 
@@ -1709,11 +1804,18 @@ export default function BrewFluent() {
               {p.name}
             </div>
             <div style={{ color: T.inkSoft, fontSize: 14, marginTop: 4 }}>{p.blurb}</div>
-            <div style={{ color: T.leaf, fontWeight: 700, fontSize: 13, marginTop: 10 }}>
-              {p.items.length} drills → 1 roleplay ›
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+              <SteepDots levels={packLevels(p)} />
+              <div style={{ color: T.leaf, fontWeight: 700, fontSize: 13, marginLeft: "auto" }}>
+                {p.items.length} drills → 1 roleplay ›
+              </div>
             </div>
           </button>
         ))}
+
+        <Btn kind="ghost" onClick={() => setScreen("tree")} style={{ marginTop: 4 }}>
+          Your steep tree
+        </Btn>
 
         <Btn
           kind="ghost"
@@ -1724,7 +1826,7 @@ export default function BrewFluent() {
             setRewriteText("");
             setScreen("tips");
           }}
-          style={{ marginTop: 4 }}
+          style={{ marginTop: 10 }}
         >
           Tips library
         </Btn>
@@ -1780,6 +1882,135 @@ export default function BrewFluent() {
       </>
     );
 
+  /* ---------- STEEP TREE (mastery overview) ---------- */
+  if (screen === "tree") {
+    const groups = [
+      ...PACKS.map((p) => ({
+        name: p.name,
+        rows: p.items.map((it, i) => ({ target: it.target, level: masteryLevel(mastery[`${p.id}:${i}`]) })),
+      })),
+      {
+        name: SCENARIO.title,
+        flagship: true,
+        rows: SCENARIO.beats.map((b, i) => ({
+          target: b.target,
+          level: masteryLevel(mastery[`scenario:${SCENARIO.id}:${i}`]),
+        })),
+      },
+    ];
+    const allLevels = groups.flatMap((g) => g.rows.map((r) => r.level));
+    const brewed = allLevels.filter((l) => l >= 2).length;
+    const steeped = allLevels.filter((l) => l === 3).length;
+
+    return shell(
+      <>
+        {header}
+        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 650, margin: "18px 0 6px" }}>
+          Your steep tree
+        </div>
+        <p style={{ color: T.inkSoft, fontSize: 14, lineHeight: 1.6, margin: "0 0 14px" }}>
+          Every softener brews as you work the loop — drill it right, carry it into a roleplay, then
+          let it survive a spaced review. <strong>{brewed}</strong> brewed · <strong>{steeped}</strong> steeped of{" "}
+          {allLevels.length}.
+        </p>
+
+        {/* legend */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px 16px",
+            background: T.surface,
+            border: `1.5px solid ${T.line}`,
+            borderRadius: 14,
+            padding: "12px 16px",
+            marginBottom: 18,
+          }}
+        >
+          {MASTERY.map((m, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: i === 0 ? "transparent" : m.color,
+                  border: `1.5px solid ${i === 0 ? T.line : m.color}`,
+                }}
+              />
+              <span style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>{m.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {groups.map((g) => (
+          <div
+            key={g.name}
+            style={{
+              background: T.surface,
+              border: `1.5px solid ${T.line}`,
+              borderRadius: 16,
+              padding: "14px 16px",
+              marginBottom: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <div style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontWeight: 650 }}>
+                {g.flagship ? "☕ " : ""}
+                {g.name}
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <SteepDots levels={g.rows.map((r) => r.level)} />
+              </div>
+            </div>
+            {g.rows.map((r, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  padding: "9px 0",
+                  borderTop: `1px solid ${T.line}`,
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    flex: "none",
+                    marginTop: 4,
+                    width: 9,
+                    height: 9,
+                    borderRadius: "50%",
+                    background: r.level === 0 ? "transparent" : MASTERY[r.level].color,
+                    border: `1.5px solid ${r.level === 0 ? T.line : MASTERY[r.level].color}`,
+                  }}
+                />
+                <div style={{ flex: 1, fontSize: 13.5, lineHeight: 1.45, color: r.level === 0 ? T.inkSoft : T.ink }}>
+                  {r.target}
+                </div>
+                <div
+                  style={{
+                    flex: "none",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: r.level === 0 ? T.inkSoft : MASTERY[r.level].color,
+                  }}
+                >
+                  {MASTERY[r.level].label}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        <Btn kind="ghost" onClick={() => setScreen("home")} style={{ marginTop: 4 }}>
+          Back
+        </Btn>
+      </>
+    );
+  }
 
   /* ---------- TIPS LIBRARY ---------- */
   if (screen === "tips") {
