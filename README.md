@@ -6,92 +6,95 @@ BrewFluent is a React prototype for English pragmatics: the small phrases that
 make a request sound reasonable, a disagreement sound constructive, or a refusal
 sound firm without being rude.
 
-The core idea is simple. Learners drill a softener, carry it into a roleplay,
-and bank anything they miss for spaced review. The app's signature Steep Gauge
-keeps the target visible: under-brewed is too blunt, over-steeped is too hedged,
-and the middle is clear but considerate.
+Learners drill a softener, carry it into a roleplay, and bank anything they miss
+for spaced review. The Steep Gauge keeps the target visible: under-brewed is too
+blunt, over-steeped is too hedged, and the middle is clear but considerate.
 
-This repository is public as a product and implementation reference. It is not
-an installable production app yet.
+![BrewFluent home screen](docs/assets/brewfluent-home.png)
 
-## What Is In This Prototype
+## What Works Now
 
 - Five authored drill packs: Requests, Disagreement, Refusals, Feedback, and
   Closers.
-- Two drill formats: tap-to-choose and free-text rewrite.
+- Tap-to-choose and free-text rewrite drills.
 - Drill-to-roleplay transfer, where missed or newly learned patterns become
   targets in a short conversation.
 - A spaced mistake bank with interval-doubling review.
 - Daily quest and streak state.
 - A new-tab-style "Softener of the Day" surface.
-- Pressure Mode for faster, less patient roleplay.
+- Pressure Mode for faster, less patient roleplay practice.
 - One hand-built branching scenario, "Asking for the Raise," with rapport and
   multiple endings.
-- Offline fallbacks for rewrite scoring and roleplay turns so the UI still works
-  when model calls fail.
+- Local fallbacks for rewrite scoring and roleplay turns, so the interface can
+  still be inspected without live model access.
 
-## Product Shape
+## Product Loop
 
 ```text
 Drill -> Transfer -> Roleplay -> Bank -> Review
 ```
 
-BrewFluent is aimed at advanced English learners who can form correct sentences
-but still get tripped up by tone. The product does not teach grammar first. It
-teaches the social layer around grammar: when to soften, when to stay direct, and
-how to avoid apologizing so much that the point disappears.
+BrewFluent is for advanced English learners who can form correct sentences but
+still get tripped up by tone. It does not start with grammar. It teaches the
+social layer around grammar: when to soften, when to stay direct, and how to
+avoid apologizing so much that the point disappears.
 
 ## Tech Stack
 
-- React single-file prototype in `src/BrewFluent.tsx`
-- TypeScript-flavored TSX component style
+- Vite
+- React
+- TypeScript-flavored TSX
 - Anthropic Messages API integration for live rewrite scoring and NPC roleplay
-- Browser-provided `window.storage` key/value persistence
+- Browser storage for prototype state
 - Inline design tokens using Fraunces, Karla, leaf, copper, mist, and warm paper
   tones
 
-The prototype currently calls the model endpoint from the client because it was
-built for a host runtime that injects credentials. A real deployment should put
-all model calls behind a backend proxy and keep keys in server-side environment
-variables.
+The prototype can run without model access because the scoring and roleplay
+paths include local fallbacks. A real deployment should move model requests
+behind a backend route and keep secrets server-side.
+
+## Run Locally
+
+```bash
+npm install
+npm run dev
+```
+
+Then open `http://127.0.0.1:5173`.
+
+Build the production bundle with:
+
+```bash
+npm run build
+```
 
 ## Repository Layout
 
 ```text
 .
++-- index.html
++-- package.json
 +-- README.md
 +-- LICENSE
 +-- docs/
 |   +-- architecture.md
+|   +-- assets/
+|   |   +-- brewfluent-home.png
 |   +-- plan-addendum-solo-rescope.md
 +-- src/
     +-- BrewFluent.tsx
+    +-- main.jsx
 ```
 
-`src/BrewFluent.tsx` is the product prototype. The docs explain the product loop,
-brand language, security notes, and solo-developer roadmap.
-
-## Running It Locally
-
-There is no package scaffold in this repository yet. To run the prototype today,
-mount the default export from `src/BrewFluent.tsx` inside a React app that already
-has React installed.
-
-Minimum host expectations:
-
-- React with hooks support.
-- A browser-like runtime.
-- A `window.storage` compatible async key/value API, or a small adapter around
-  `localStorage`.
-- A backend proxy for model calls if used outside the original prototype host.
-
-The component includes heuristic fallbacks, so the learning loop can be inspected
-without live model access.
+`src/BrewFluent.tsx` holds the prototype UI, authored content, scoring prompts,
+roleplay flow, review scheduling, and scenario logic. `docs/architecture.md`
+captures the product loop and implementation notes.
 
 ## Testing
 
-No automated test runner is checked in yet. Current verification is manual:
+There is no automated test runner yet. Current checks are:
 
+- `npm run build`
 - Run through each drill pack.
 - Submit at least one rewrite with and without model access.
 - Complete a roleplay and confirm missed targets enter the mistake bank.
@@ -101,25 +104,23 @@ No automated test runner is checked in yet. Current verification is manual:
 
 ## Deployment Notes
 
-Before this becomes a public web app:
+Before this becomes a production web app:
 
-- Add a normal app scaffold and build pipeline.
-- Move model requests behind a server route.
-- Replace prototype storage with a durable user data layer.
-- Add authentication only after the core learning loop is stable.
+- Put model calls behind a server route.
+- Replace prototype storage with durable user data.
 - Add tests around target matching, mistake-bank scheduling, and scenario
   branching.
+- Add authentication only after the core learning loop is stable.
 
 ## Roadmap
 
-- Package the prototype as a runnable web app.
-- Add a backend proxy for model calls.
+- Add the backend route for model calls.
 - Expand authored packs and review prompts.
 - Add speech-scored drills through an external speech assessment API.
-- Turn the branching scenario format into private authoring tools only if the
-  hand-built scenario proves useful.
+- Turn the hand-built branching scenario into private authoring tools if usage
+  data supports it.
 - Defer marketplaces, native shells, public user-generated content, and social
-  competition until the product has real usage.
+  competition until the product has real users.
 
 ## License
 
