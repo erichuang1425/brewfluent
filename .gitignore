@@ -10,7 +10,7 @@ build/
 out/
 *.tsbuildinfo
 
-# Env & secrets — NEVER commit API keys (see CLAUDE.md "Security")
+# Env and secrets
 .env
 .env.*
 !.env.example
@@ -24,7 +24,7 @@ pnpm-debug.log*
 logs/
 *.log
 
-# Editor / OS
+# Editor and OS files
 .vscode/
 .idea/
 *.swp

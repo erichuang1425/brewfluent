@@ -730,7 +730,7 @@ const relativeDue = (dueStr) => {
   return `in ${days} days`;
 };
 
-/* Normalized matching between Claude-reported hits and target strings */
+/* Normalized matching between model-reported hits and target strings */
 const norm = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
 const hitMatch = (hits, target) =>
   hits.some((h) => {
@@ -870,9 +870,9 @@ async function wipeStore(key) {
   } catch {}
 }
 
-/* ----------------------- Claude helpers ----------------------- */
+/* ----------------------- Model helpers ----------------------- */
 
-async function claude(userContent) {
+async function callModel(userContent) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -919,7 +919,7 @@ Respond ONLY with JSON, no markdown, no preamble:
 {"verdict":"blunt|good|overdone","gauge":0-100,"feedback":"one or two short sentences of coaching","model":"one natural example rewrite"}
 gauge: 0 = maximally blunt, ~55 = just right, 100 = maximally over-hedged.`;
   try {
-    const parsed = parseJSON(await claude(prompt));
+    const parsed = parseJSON(await callModel(prompt));
     if (parsed && parsed.verdict) return parsed;
   } catch {}
   const a = answer.toLowerCase();
@@ -991,7 +991,7 @@ ${pressure ? '- PRESSURE MODE: act more impatient, introduce one small complicat
 Respond ONLY with JSON, no markdown:
 {"reply":"...","hits":["..."],"coach":"... or null","done":false}`;
   try {
-    const parsed = parseJSON(await claude(prompt));
+    const parsed = parseJSON(await callModel(prompt));
     if (parsed && parsed.reply) return parsed;
   } catch {}
   // Offline fallback — stay in character for the *selected* pack and let the

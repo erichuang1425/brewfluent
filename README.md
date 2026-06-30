@@ -1,136 +1,130 @@
-# BrewFluent ☕
+# BrewFluent
 
-**Say it softer — without losing the point.**
+**Workplace English tone practice for people who already know the words.**
 
-BrewFluent is an English-pragmatics trainer for people who can already speak
-English but keep landing on the wrong side of *tone* — too blunt and they read
-as rude, too hedged and they read as a doormat. It teaches the small social
-"softeners" of everyday workplace English (requests, disagreement, refusals,
-feedback) and then makes you actually use them in live, AI-driven roleplay.
+BrewFluent is a React prototype for English pragmatics: the small phrases that
+make a request sound reasonable, a disagreement sound constructive, or a refusal
+sound firm without being rude.
 
-The signature mechanic is the **Steep Gauge**: softening is a brew. Under-brewed
-is blunt, over-steeped is a pile of nervous hedges, and the sweet spot in the
-middle is *just right* — polite but unmistakable.
+The core idea is simple. Learners drill a softener, carry it into a roleplay,
+and bank anything they miss for spaced review. The app's signature Steep Gauge
+keeps the target visible: under-brewed is too blunt, over-steeped is too hedged,
+and the middle is clear but considerate.
 
-> **Status:** early prototype (pre-MVP). This repo currently holds the
-> interactive prototype that proves the core loop. See
-> [`docs/plan-addendum-solo-rescope.md`](docs/plan-addendum-solo-rescope.md) for
-> the full product plan and phasing.
+This repository is public as a product and implementation reference. It is not
+an installable production app yet.
 
----
+## What Is In This Prototype
 
-## The core loop
+- Five authored drill packs: Requests, Disagreement, Refusals, Feedback, and
+  Closers.
+- Two drill formats: tap-to-choose and free-text rewrite.
+- Drill-to-roleplay transfer, where missed or newly learned patterns become
+  targets in a short conversation.
+- A spaced mistake bank with interval-doubling review.
+- Daily quest and streak state.
+- A new-tab-style "Softener of the Day" surface.
+- Pressure Mode for faster, less patient roleplay.
+- One hand-built branching scenario, "Asking for the Raise," with rapport and
+  multiple endings.
+- Offline fallbacks for rewrite scoring and roleplay turns so the UI still works
+  when model calls fail.
 
+## Product Shape
+
+```text
+Drill -> Transfer -> Roleplay -> Bank -> Review
 ```
-DRILL  →  TRANSFER  →  ROLEPLAY  →  BANK
-```
 
-1. **Drill** a pack of softeners in two cheap formats — *tap-to-choose* and
-   *rewrite* (the rewrite is scored live by Claude).
-2. **Transfer** the patterns you just practised — especially the ones you
-   missed — into a short, live **roleplay** with a Claude-played NPC who
-   deliberately creates openings for them. Drills teach the pattern; the
-   roleplay is where it sticks.
-3. **Bank** every miss into a spaced-repetition **mistake bank** that brings it
-   back for review (correct review → interval doubles; miss → back tomorrow).
+BrewFluent is aimed at advanced English learners who can form correct sentences
+but still get tripped up by tone. The product does not teach grammar first. It
+teaches the social layer around grammar: when to soften, when to stay direct, and
+how to avoid apologizing so much that the point disappears.
 
-A daily **quest** (finish a pack + carry it into a roleplay) drives a **streak**.
+## Tech Stack
 
----
+- React single-file prototype in `src/BrewFluent.tsx`
+- TypeScript-flavored TSX component style
+- Anthropic Messages API integration for live rewrite scoring and NPC roleplay
+- Browser-provided `window.storage` key/value persistence
+- Inline design tokens using Fraunces, Karla, leaf, copper, mist, and warm paper
+  tones
 
-## Prototype stages (this repo's three PRs)
+The prototype currently calls the model endpoint from the client because it was
+built for a host runtime that injects credentials. A real deployment should put
+all model calls behind a backend proxy and keep keys in server-side environment
+variables.
 
-The prototype evolved in three stages, delivered as three stacked PRs that each
-advance the single canonical file [`src/BrewFluent.tsx`](src/BrewFluent.tsx):
+## Repository Layout
 
-| Stage | PR  | What it adds |
-|-------|-----|--------------|
-| **1 — MVP base** | pr1 | 2 drill packs (Requests, Disagreement), tap + rewrite formats, streak + daily quest, drill→roleplay transfer with a Claude NPC. In-memory only. |
-| **2 — Persistence + mistake bank** | pr2 | Real persistence via `window.storage` (streak, quest, mistake bank survive reloads). Spaced mistake bank with interval-doubling review. |
-| **3 — Ambient surface** | pr3 | New-tab "Softener of the Day" widget (the cheapest ambient micro-exposure surface) + normalized hit-matching for more reliable target detection. |
-
-Beyond the three prototype stages, the repo now also carries the first **v1**
-content: drill packs 3–5 (Refusals, Feedback, Closers), the **flagship
-branching scenario**, a lightweight **tips library**, and **Pressure Mode** for
-shorter, less-forgiving transfer practice.
-
-### Flagship scenario — *Asking for the raise*
-
-The v1 signature piece: one hand-built branching scene (not a scenario engine —
-per the solo rescope, you ship *one instance* of the thing an engine would
-generate). You walk a real raise conversation beat by beat; each beat is a
-pick-the-brew choice whose verdict moves a **rapport meter** (hardcoded), the
-NPC's reply branches on your pick, and the **ending** branches on your final
-rapport — *commitment*, *door left open*, or *stalled*. Blunt and over-steeped
-beats are banked into the same spaced mistake bank, so the flagship still closes
-the `drill → … → bank` loop. It's fully hardcoded — no model call — so it can
-never degrade.
-
-
-### Tips library and Pressure Mode
-
-The v1 solo-friendly supporting surfaces are now represented in the prototype:
-
-- **Tips library:** three self-authored micro-lessons with attached rewrite chunks,
-  so learners can read a pattern and immediately re-steep it.
-- **Pressure Mode:** an alternate roleplay launch that tells the NPC to be rushed
-  and less patient, with a shorter completion window. It reuses the same target
-  chips, recap, quest, and mistake-bank loop.
-
----
-
-## Tech
-
-- **UI:** React (single-file prototype component, TSX).
-- **AI:** Claude (`claude-sonnet-4-6` in the prototype) for two jobs —
-  scoring rewrites (`scoreRewrite`) and playing the roleplay NPC
-  (`roleplayTurn`). Both have offline heuristic fallbacks so the UI degrades
-  gracefully.
-- **Persistence:** `window.storage` key/value (prototype host runtime).
-- **Type / design:** Fraunces (display) + Karla (body); a warm, earthy
-  leaf/copper/mist palette defined in the `T` token object.
-
-> ⚠️ **Security:** the prototype calls the Anthropic API directly from the
-> client. This is only safe inside the prototype host runtime, which injects
-> auth. **A real build must never ship an API key to the browser** — route all
-> model calls through a backend proxy. See `CLAUDE.md` → *Security*.
-
----
-
-## Repo layout
-
-```
+```text
 .
-├── CLAUDE.md          # Primary guide for developing this project (read first)
-├── README.md          # You are here
-├── LICENSE            # Proprietary — all rights reserved
-├── src/
-│   └── BrewFluent.tsx # The evolving prototype (stage 1 → 2 → 3 across the PRs)
-└── docs/
-    └── plan-addendum-solo-rescope.md  # Product plan & phasing (solo rescope)
++-- README.md
++-- LICENSE
++-- docs/
+|   +-- architecture.md
+|   +-- plan-addendum-solo-rescope.md
++-- src/
+    +-- BrewFluent.tsx
 ```
 
-> Note: the working folder on disk is named `Velvet` — an earlier rename that
-> was reverted. The product is **BrewFluent**; ignore the folder name.
+`src/BrewFluent.tsx` is the product prototype. The docs explain the product loop,
+brand language, security notes, and solo-developer roadmap.
 
----
+## Running It Locally
 
-## Roadmap (solo edition, abbreviated)
+There is no package scaffold in this repository yet. To run the prototype today,
+mount the default export from `src/BrewFluent.tsx` inside a React app that already
+has React installed.
 
-| Phase | Highlights |
-|-------|-----------|
-| **MVP (mo. 0–6)** | 2 packs, tap/rewrite, streaks, drill→roleplay transfer |
-| **v1 (mo. 7–14)** | Packs 3–5, mistake-bank, 1 flagship branching scenario, self-authored tips library, Pressure Mode, new-tab widget |
-| **v1.5 (mo. 15–22)** | Speech-scored drills (API), full skill tree, private Scenario Studio |
-| **Post-traction** | Leagues, scenario marketplace, creator video feed, native shells & widgets, Register Rewriter |
+Minimum host expectations:
 
-Full detail and rationale in
-[`docs/plan-addendum-solo-rescope.md`](docs/plan-addendum-solo-rescope.md).
+- React with hooks support.
+- A browser-like runtime.
+- A `window.storage` compatible async key/value API, or a small adapter around
+  `localStorage`.
+- A backend proxy for model calls if used outside the original prototype host.
 
----
+The component includes heuristic fallbacks, so the learning loop can be inspected
+without live model access.
+
+## Testing
+
+No automated test runner is checked in yet. Current verification is manual:
+
+- Run through each drill pack.
+- Submit at least one rewrite with and without model access.
+- Complete a roleplay and confirm missed targets enter the mistake bank.
+- Review a banked item and confirm the interval changes.
+- Open the widget surface and try its mini drill.
+- Complete the branching scenario at different rapport levels.
+
+## Deployment Notes
+
+Before this becomes a public web app:
+
+- Add a normal app scaffold and build pipeline.
+- Move model requests behind a server route.
+- Replace prototype storage with a durable user data layer.
+- Add authentication only after the core learning loop is stable.
+- Add tests around target matching, mistake-bank scheduling, and scenario
+  branching.
+
+## Roadmap
+
+- Package the prototype as a runnable web app.
+- Add a backend proxy for model calls.
+- Expand authored packs and review prompts.
+- Add speech-scored drills through an external speech assessment API.
+- Turn the branching scenario format into private authoring tools only if the
+  hand-built scenario proves useful.
+- Defer marketplaces, native shells, public user-generated content, and social
+  competition until the product has real usage.
 
 ## License
 
-Proprietary. Copyright © 2026 erichuang1425. All rights reserved. See
-[`LICENSE`](LICENSE). The repository is public for reference only; no rights to
-use, copy, or modify are granted.
+Proprietary. Copyright (c) 2026 I-Kai Huang. All rights reserved.
+
+This repository is public for reference only. No rights to use, copy, modify, or
+redistribute the code or content are granted beyond what is stated in
+[`LICENSE`](LICENSE).
